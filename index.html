@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ja" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>40代の後悔：インタラクティブ・レポート</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Neutrals (Off-white, Dark Gray, Muted Terracotta/Sage) -->
+    <!-- Application Structure Plan: 5つのセクション（導入、幸福度の谷、後悔の正体、もしも、未来へのヒント）で構成されるテーマ別の体験を設計。この構造は、ユーザーを「共感」から「発見」、そして具体的な「行動」へと導くことを目的としています。レポートを直線的に読むよりも、ユーザーが自身のペースで情報を探求できるため、より深い理解とエンゲージメントを促します。 -->
+    <!-- Visualization & Content Choices: 幸福度のU字カーブは時系列（年齢）トレンドを示すため「折れ線グラフ」を選択。高齢者の後悔ランキングは、多岐にわたる項目をユーザーが能動的に発見できるよう「インタラクティブなカード形式」を採用。40代をやり直せるならしたいことは、カテゴリー間の比較を明確にするため「水平棒グラフ」を使用。アクションプランは、情報を整理し段階的に提示するため「アコーディオン形式」としました。すべての選択は、ユーザーの能動的な探求と情報の明瞭性を最優先しています。Chart.jsのCanvasを使用し、SVG/Mermaidは使用していません。 -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #FDFBF8;
+            color: #383838;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .active-nav {
+            color: #A98E78;
+            font-weight: 700;
+        }
+        .inactive-nav {
+            color: #5f5f5f;
+        }
+        .regret-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .regret-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #A98E78;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-[#FDFBF8]/80 backdrop-blur-sm sticky top-0 z-50 border-b border-gray-200">
+        <nav class="container mx-auto px-4 py-3 flex justify-center items-center">
+            <ul class="flex space-x-4 md:space-x-8 text-sm md:text-base">
+                <li><a href="#intro" class="nav-link inactive-nav">はじめに</a></li>
+                <li><a href="#happiness-dip" class="nav-link inactive-nav">幸福度の谷</a></li>
+                <li><a href="#regret-landscape" class="nav-link inactive-nav">後悔の正体</a></li>
+                <li><a href="#redo-40s" class="nav-link inactive-nav">もしも…</a></li>
+                <li><a href="#toolkit" class="nav-link inactive-nav">未来へのヒント</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section id="intro" class="py-16 md:py-24 text-center">
+            <div class="container mx-auto px-6">
+                <h1 class="text-3xl md:text-5xl font-bold mb-4 text-[#A98E78]">40代の人生、後悔は本当か？</h1>
+                <p class="max-w-3xl mx-auto text-lg md:text-xl text-gray-600 mb-8">SNSで話題の「40代の後悔」。それは一部の人の話なのでしょうか、それとも多くの人が経験する普遍的なものなのでしょうか。このページでは、信頼できるデータを基に、40代が直面する幸福度のリアルと、後悔の正体を解き明かし、未来をより良く生きるためのヒントを探ります。</p>
+                <div class="flex justify-center">
+                    <a href="#happiness-dip" class="bg-[#A98E78] text-white font-bold py-3 px-8 rounded-full hover:bg-[#937a65] transition-colors duration-300">データで見る40代のリアル →</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="happiness-dip" class="py-16 md:py-24 bg-white">
+            <div class="container mx-auto px-6">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4">幸福度の谷：なぜ40代はつらいのか？</h2>
+                    <p class="max-w-3xl mx-auto text-gray-600">世界中の多くの調査で、人の幸福度は若い頃と年老いてから高く、中年期、特に40代で底を打つ「U字カーブ」を描くことが知られています。これは個人的な問題だけでなく、ライフステージ特有の現象です。このセクションでは、日本のデータを用いて、なぜ40代が幸福度の谷となるのか、その背景にある要因を探ります。</p>
+                </div>
+                
+                <div class="chart-container mb-12">
+                    <canvas id="happinessCurveChart"></canvas>
+                </div>
+
+                <div class="text-center max-w-2xl mx-auto mb-12">
+                    <p class="text-lg font-semibold text-[#A98E78]">40代の幸福度は62.6点と全世代で最低。</p>
+                    <p class="text-gray-600">「全く幸せではない」と感じる人の割合は7.8%にのぼり、これは60代の約3倍に相当します。</p>
+                </div>
+                
+                <div class="grid md:grid-cols-3 gap-8 text-center">
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <div class="text-4xl mb-3">💼</div>
+                        <h3 class="text-xl font-bold mb-2">キャリアの重圧</h3>
+                        <p class="text-gray-600">管理職としての責任、転職への不安、賃金の停滞など、仕事に関するストレスがピークを迎えます。</p>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <div class="text-4xl mb-3">👨‍👩‍👧‍👦</div>
+                        <h3 class="text-xl font-bold mb-2">家庭の責任</h3>
+                        <p class="text-gray-600">子育ての負担が最も大きい時期であり、自分の時間を確保することが難しくなります。</p>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg">
+                        <div class="text-4xl mb-3">👵</div>
+                        <h3 class="text-xl font-bold mb-2">親の介護</h3>
+                        <p class="text-gray-600">自身の親の健康問題や介護が始まり、仕事と家庭に加えて新たな負担が増え始めます。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="regret-landscape" class="py-16 md:py-24">
+            <div class="container mx-auto px-6">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4">後悔の正体：人生の終わりに悔やむこと</h2>
+                    <p class="max-w-3xl mx-auto text-gray-600">では、具体的に人々は何を後悔するのでしょうか。このセクションでは、多くの高齢者が人生の終わりに振り返って「やっておけばよかった」と感じる共通のテーマを探ります。下のカードをクリックして、それぞれの後悔の詳細を見てみましょう。</p>
+                </div>
+                <div id="regretCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                </div>
+
+                <div id="regretModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+                    <div class="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                        <div class="p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 id="modalTitle" class="text-2xl font-bold text-[#A98E78]"></h3>
+                                <button id="closeModal" class="text-2xl font-bold text-gray-500 hover:text-gray-800">&times;</button>
+                            </div>
+                            <p id="modalContent" class="text-gray-700"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section id="redo-40s" class="py-16 md:py-24 bg-white">
+            <div class="container mx-auto px-6">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4">「もしも、40代をやり直せるなら？」</h2>
+                    <p class="max-w-3xl mx-auto text-gray-600">人生の先輩たちは、もし40代に戻れるとしたら、何に時間とエネルギーを注ぎたいと願うのでしょうか。50代から70代の女性への調査結果は、40代という時期の重要性を浮き彫りにします。それは、将来の後悔を避けるための貴重なヒントに満ちています。</p>
+                </div>
+                <div class="flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
+                    <div class="w-full lg:w-1/2">
+                         <div class="chart-container h-[400px] md:h-[500px]">
+                            <canvas id="redoChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="w-full lg:w-1/2">
+                        <h3 class="text-2xl font-bold mb-4 text-[#A98E78]">時間の使い方が、未来を決める</h3>
+                        <p class="text-gray-600 mb-4">調査結果から浮かび上がるのは、キャリア、自己成長、健康、そして家族や趣味といった、人生の質を豊かにする要素への強い願望です。多くの人が後悔するのは、日々の忙しさに追われ、これらの長期的に重要となる「未来への投資」を後回しにしてしまったことでした。</p>
+                        <p class="text-gray-600">40代の時間の使い方が、その後の人生の満足度を大きく左右するのです。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="toolkit" class="py-16 md:py-24">
+            <div class="container mx-auto px-6">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4">後悔しない40代のための、未来へのヒント</h2>
+                    <p class="max-w-3xl mx-auto text-gray-600">後悔は過去を変えることはできませんが、未来を良くするための羅針盤になります。データと先輩たちの声から学んだことを、これからの人生に活かすための具体的なアクションプランを紹介します。各項目をクリックして、今日から始められるヒントを見つけてください。</p>
+                </div>
+                <div id="accordion" class="max-w-3xl mx-auto space-y-4">
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white text-center py-8">
+        <p>&copy; 2025 40代の後悔：インタラクティブ・レポート</p>
+        <p class="text-sm text-gray-400 mt-2">このページは提供された調査レポートを基に作成されたものです。</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const data = {
+                happiness: {
+                    labels: ['20代', '30代', '40代', '50代', '60代', '70代以上'],
+                    scores: [67.2, 65.0, 62.6, 64.0, 70.4, 70.0],
+                },
+                regrets: [
+                    {
+                        icon: '💔',
+                        title: '理想の自分になれなかった',
+                        short: '人生最大の普遍的な後悔。76%が「理想の自分になれなかった」と回答。',
+                        full: '多くの調査で、人生の最後に最も深く後悔するのは「他人の期待に応えるためではなく、自分に正直に生きる勇気がなかったこと」が挙げられます。これは、単に特定の行動を悔やむのではなく、自己実現という根源的なテーマに関わる深い後悔です。他者との比較や社会的な期待によって作られた「理想の自分」ではなく、自分自身の価値観で生きることの重要性を示唆しています。'
+                    },
+                    {
+                        icon: '💪',
+                        title: '健康を大事にしなかった',
+                        short: '若い頃の不摂生が、後になって響いてくる。',
+                        full: '若い頃は無理がきくため、健康の重要性を軽視しがちです。しかし、運動不足、不規則な食生活、睡眠不足といった不摂生は、確実に未来の自分に影響を及ぼします。「もっと健康に気を遣っておけば…」という後悔は、多くの高齢者が口にする共通の言葉です。'
+                    },
+                    {
+                        icon: '⏳',
+                        title: '働きすぎて家族との時間を逃した',
+                        short: '仕事に追われ、最も大切な人との時間を犠牲にした。',
+                        full: '特に男性に多い後悔として、仕事に没頭するあまり、子どもの成長を見逃したり、パートナーとの関係が希薄になったりしたことが挙げられます。失われた時間は取り戻せません。「お金は稼げても、子どもの成長は二度と見られない」という言葉が重く響きます。'
+                    },
+                    {
+                        icon: '🚀',
+                        title: 'やりたいことに挑戦しなかった',
+                        short: '失敗を恐れて、夢を追いかけなかった。',
+                        full: '「安定」を求めるあまり、起業、留学、創作活動など、心の中にあった「やりたいこと」を封印してしまった後悔です。「もしあの時、一歩踏み出していたら…」という思いは、人生の終盤になっても心をよぎります。リスクを恐れず挑戦することの価値を物語っています。'
+                    },
+                    {
+                        icon: '💰',
+                        title: 'お金の計画を立てなかった',
+                        short: '将来への備えが不十分で、老後に不安が残った。',
+                        full: '若い頃は将来のお金のことを真剣に考えず、計画的な貯蓄や資産形成を怠りがちです。その結果、老後に経済的な不安を抱え、やりたいことができなくなるというケースは少なくありません。もっと早くから資産形成を始めておけばよかった、という後悔は非常に現実的な問題です。'
+                    },
+                    {
+                        icon: '📚',
+                        title: '学びを続けなかった',
+                        short: '自己投資を怠り、成長の機会を逃した。',
+                        full: '人生100年時代において、学び続けることの重要性は増すばかりです。資格取得やリスキリングなど、新しい知識やスキルを身につけることを怠った結果、キャリアの選択肢が狭まったり、時代の変化についていけなくなったりします。学びは、人生を豊かにするための最も確実な投資の一つです。'
+                    }
+                ],
+                redo40s: {
+                    labels: ['仕事', '子育て', '資格取得・学び', '健康管理', '趣味を楽しむ', '夫婦関係', '親孝行'],
+                    percentages: [35, 32, 28, 25, 22, 18, 15] 
+                },
+                toolkit: [
+                    {
+                        title: '① 「理想の自分」を再定義する',
+                        content: '他人のものさしやSNSでのキラキラした投稿と比較するのをやめましょう。「理想の自分」とは、誰かになることではありません。過去の自分が乗り越えてきたこと、日々の小さな達成を認め、自分だけの価値観に基づいた「なりたい自分」を再設定することが、後悔しない人生の第一歩です。'
+                    },
+                    {
+                        title: '② 時間の使い方を「未来への投資」と考える',
+                        content: '40代の時間の使い方は、単なるスケジュール管理ではありません。それは「未来の自分」への投資です。1週間のうち、ほんの少しでも「健康（運動・食事）」「学び（読書・勉強）」「人間関係（家族との対話・友人との交流）」「挑戦（新しい趣味）」のために意識的に時間を確保しましょう。この小さな投資が、10年後、20年後の大きな差になります。'
+                    },
+                    {
+                        title: '③ 完璧を求めず、今日から「小さな一歩」を始める',
+                        content: '「いつかやろう」は、後悔への入り口です。「やりたいことに挑戦しなかった」という後悔を避ける最も効果的な方法は、完璧な計画を待たずに、今日できる小さな一歩を踏み出すことです。30分のウォーキング、1日10ページの読書、家族への「ありがとう」の一言。行動そのものが、未来を変える力になります。'
+                    },
+                    {
+                        title: '④ 40代を「最高の成長期」と捉える',
+                        content: '40代は「幸福度の谷」であると同時に、仕事や家庭で最も多くの経験を積み、人間的に大きく成長できる「最高の機会」でもあります。困難やプレッシャーを「成長痛」と捉え、この時期をどう乗り越えるかが、その後の人生の豊かさを決めます。後悔を恐れるのではなく、変化と成長のチャンスとして受け入れましょう。'
+                    }
+                ]
+            };
+
+            const renderHappinessChart = () => {
+                const ctx = document.getElementById('happinessCurveChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.happiness.labels,
+                        datasets: [{
+                            label: '年代別幸福度スコア',
+                            data: data.happiness.scores,
+                            borderColor: '#A98E78',
+                            backgroundColor: 'rgba(169, 142, 120, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointBackgroundColor: '#A98E78',
+                            pointRadius: 5,
+                            pointHoverRadius: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `幸福度: ${context.raw}点`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                suggestedMin: 60,
+                                title: {
+                                    display: true,
+                                    text: '幸福度スコア'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: '年代'
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const renderRegretCards = () => {
+                const container = document.getElementById('regretCards');
+                container.innerHTML = data.regrets.map(regret => `
+                    <div class="bg-white p-6 rounded-lg shadow-md cursor-pointer regret-card" data-title="${regret.title}" data-content="${regret.full}">
+                        <div class="text-4xl mb-4">${regret.icon}</div>
+                        <h3 class="text-xl font-bold mb-2">${regret.title}</h3>
+                        <p class="text-gray-600">${regret.short}</p>
+                    </div>
+                `).join('');
+            };
+
+            const renderRedoChart = () => {
+                const ctx = document.getElementById('redoChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.redo40s.labels,
+                        datasets: [{
+                            label: '回答率 (%)',
+                            data: data.redo40s.percentages,
+                            backgroundColor: 'rgba(169, 142, 120, 0.7)',
+                            borderColor: '#A98E78',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            title: {
+                                display: true,
+                                text: '50-70代女性が「40代をやり直せるならしたいこと」'
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: '回答率 (%)'
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const renderToolkitAccordion = () => {
+                const container = document.getElementById('accordion');
+                container.innerHTML = data.toolkit.map((item, index) => `
+                    <div class="bg-white rounded-lg shadow-sm">
+                        <button class="w-full flex justify-between items-center text-left p-5 font-bold text-lg focus:outline-none accordion-button">
+                            <span>${item.title}</span>
+                            <span class="transform transition-transform duration-300">▼</span>
+                        </button>
+                        <div class="accordion-content overflow-hidden max-h-0 transition-all duration-500 ease-in-out">
+                            <p class="p-5 pt-0 text-gray-600">${item.content}</p>
+                            <div class="p-5 pt-0">
+                                <button class="generate-hint-button bg-[#A98E78] text-white font-bold py-2 px-4 rounded-full hover:bg-[#937a65] transition-colors duration-300 text-sm" data-index="${index}">
+                                    ✨ もっとヒントを得る
+                                </button>
+                                <div class="generated-content mt-4 text-gray-700"></div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            };
+
+            const callGeminiAPI = async (prompt, targetElement) => {
+                targetElement.innerHTML = '<div class="loading-spinner"></div> 生成中...';
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = ""; // If you want to use models other than gemini-2.0-flash or imagen-3.0-generate-002, provide an API key here. Otherwise, leave this as-is.
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        targetElement.innerHTML = `<p class="whitespace-pre-wrap">${text}</p>`;
+                    } else {
+                        targetElement.innerHTML = '<p class="text-red-500">ヒントの生成に失敗しました。</p>';
+                    }
+                } catch (error) {
+                    console.error('API呼び出しエラー:', error);
+                    targetElement.innerHTML = '<p class="text-red-500">ヒントの生成中にエラーが発生しました。</p>';
+                }
+            };
+
+            const setupEventListeners = () => {
+                const modal = document.getElementById('regretModal');
+                const closeModal = document.getElementById('closeModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const modalContent = document.getElementById('modalContent');
+                
+                document.getElementById('regretCards').addEventListener('click', (e) => {
+                    const card = e.target.closest('.regret-card');
+                    if (card) {
+                        modalTitle.textContent = card.dataset.title;
+                        modalContent.textContent = card.dataset.content;
+                        modal.classList.remove('hidden');
+                        modal.classList.add('flex');
+                    }
+                });
+
+                closeModal.addEventListener('click', () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                });
+                
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.classList.add('hidden');
+                        modal.classList.remove('flex');
+                    }
+                });
+
+                document.getElementById('accordion').addEventListener('click', (e) => {
+                    const button = e.target.closest('.accordion-button');
+                    if (button) {
+                        const content = button.nextElementSibling;
+                        const icon = button.querySelector('span:last-child');
+                        
+                        document.querySelectorAll('.accordion-content').forEach(item => {
+                            if (item !== content) {
+                                item.style.maxHeight = '0px';
+                                item.previousElementSibling.querySelector('span:last-child').style.transform = 'rotate(0deg)';
+                            }
+                        });
+
+                        if (content.style.maxHeight !== '0px') {
+                            content.style.maxHeight = '0px';
+                            icon.style.transform = 'rotate(0deg)';
+                        } else {
+                            content.style.maxHeight = content.scrollHeight + 'px';
+                            icon.style.transform = 'rotate(180deg)';
+                        }
+                    }
+
+                    const generateButton = e.target.closest('.generate-hint-button');
+                    if (generateButton) {
+                        const index = parseInt(generateButton.dataset.index);
+                        const toolkitItem = data.toolkit[index];
+                        const prompt = `以下の「後悔しない40代のためのヒント」について、さらに具体的な行動や考え方の例を5つ提案してください。箇条書きでお願いします。
+
+ヒントのタイトル: ${toolkitItem.title}
+ヒントの内容: ${toolkitItem.content}`;
+                        const generatedContentDiv = generateButton.nextElementSibling; // The div to display the generated content
+                        callGeminiAPI(prompt, generatedContentDiv);
+                    }
+                });
+
+                const navLinks = document.querySelectorAll('.nav-link');
+                const sections = document.querySelectorAll('main section');
+                window.addEventListener('scroll', () => {
+                    let current = '';
+                    sections.forEach(section => {
+                        const sectionTop = section.offsetTop;
+                        if (pageYOffset >= sectionTop - 65) {
+                            current = section.getAttribute('id');
+                        }
+                    });
+
+                    navLinks.forEach(link => {
+                        link.classList.remove('active-nav');
+                        link.classList.add('inactive-nav');
+                        if(link.getAttribute('href') === `#${current}`) {
+                             link.classList.add('active-nav');
+                             link.classList.remove('inactive-nav');
+                        }
+                    })
+                });
+            };
+
+            renderHappinessChart();
+            renderRegretCards();
+            renderRedoChart();
+            renderToolkitAccordion();
+            setupEventListeners();
+        });
+    </script>
+</body>
+</html>

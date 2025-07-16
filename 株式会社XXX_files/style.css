@@ -1,0 +1,77 @@
+@charset "UTF-8";
+/*全体的な設定　画像の幅や文字など*/
+
+body {
+    font-family: 'Hiragino Kaku Gothic Pro','Meiryo',sans-serif;
+    font-size: 15px;
+    border-top: 10px solid #79a1b1;/*topのブルーライン*/
+
+}
+/*全体へ*/
+a {
+    text-decoration: none;/*アンダーラインを消す*/
+    color: #333;
+}
+
+.logo {
+    text-align: center;
+    margin-top: 40px;
+    margin-bottom: 30px;
+}
+
+.logo img {
+    width: 50px;
+    height: 50px;
+    display: inline-block;
+    margin-bottom: 5px;
+}
+
+.w_inner {  /*header以外にも同じ幅を指定できるようにするクラスを作った*/
+    width: 1200px;
+    margin: 0 auto;
+}
+
+.header ul {
+    display: flex; /*ulを横並びにする*/
+    margin-right: 30px;
+
+}
+
+.header ul li {
+    width: 200px;
+    /*min-width: 200px; 今回は不要、display:flexで大まかに配置されるがwidthで幅を指定すると、範囲を超えてしまうことがり、それを防ぐ*/
+    text-align: center;
+    list-style: none;/*黒点を消す*/
+    border-right: 1px solid #ddd;
+    margin-bottom: 30px;
+}
+
+.header ul li:first-child{ /*擬似クラス、liの最初の要素を指定*/
+    border-left: 1px solid #ddd;
+}
+
+.header ul li a {
+    display: block;/*liの親要素をにaの幅を合わせる*/
+}
+
+.header_img {
+    text-align: center;
+    
+}
+.header_img img {
+    display: inline-block;
+    width: 1200px;
+    height: 500px;
+    object-fit: cover;/*画像が縮小さえない良いに、サイズに合わせてフィットさせる*/
+}
+
+.cotainer_service {
+
+}
+
+.cotainer_service h2 {
+    text-align: center;
+    font-weight: bold;/*太文字*/
+    font-size: 24px;
+    margin-bottom: 20px;
+}
