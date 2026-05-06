@@ -322,6 +322,61 @@
 
         .caption { color: var(--muted-text); font-size: 13px; }
 
+        /* MODAL */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .modal-box h3 { color: #68628a; margin-bottom: 8px; }
+        .modal-box p  { font-size: 14px; color: #7d8497; margin-bottom: 12px; line-height: 1.6; }
+        .modal-code {
+            width: 100%;
+            border: 1px solid #d9dde5;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+            font-family: monospace;
+            color: #4f5c72;
+            background: #f3f4f6;
+            resize: none;
+            margin-bottom: 12px;
+            word-break: break-all;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+        .btn-ghost {
+            background: transparent;
+            color: #68628a;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 18px;
+            font-size: 14px;
+            font-family: 'Noto Sans JP', sans-serif;
+            cursor: pointer;
+        }
+        .btn-ghost:hover { background: #f0ebff; }
+        .import-section {
+            background: #fff8f0;
+            border: 1px solid #f5d9bd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 8px;
+        }
+        .import-section h2 { font-size: 16px; margin-bottom: 8px; }
+
         @media (max-width: 768px) {
             .app-layout { flex-direction: column; }
             .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--line); }
@@ -353,6 +408,18 @@
     </aside>
 
     <main class="main-content" id="main-content"></main>
+</div>
+
+<div class="modal-overlay" id="exportModal" style="display:none">
+    <div class="modal-box">
+        <h3>📤 指導者に送るコード</h3>
+        <p>このコードをコピーして、LINEやメールで指導者に送ってください。<br>指導者は「基本情報」画面の下にある入力欄に貼り付けて読み込んでください。</p>
+        <textarea class="modal-code" id="exportCodeText" rows="5" readonly></textarea>
+        <div class="modal-actions">
+            <button class="btn-ghost" onclick="closeExportModal()">閉じる</button>
+            <button class="btn" id="copyCodeBtn">📋 コピーする</button>
+        </div>
+    </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -512,11 +579,33 @@ function renderInfo(el) {
         <div class="input-group">
             <label class="input-label">面談での気づき・次月の目標などを入力してください</label>
             <textarea id="comment" rows="7" placeholder="例：コミュニケーションに自信が持てていない様子。成功体験を意識的に設ける。">${esc(state.comment)}</textarea>
+        </div>
+        <hr>
+        <div class="import-section">
+            <h2>📥 指導者の方へ：コードを受け取った場合</h2>
+            <div class="guide-box" style="margin-top:8px">看護師さんから受け取ったコードを貼り付けて「読み込む」を押してください。自己評価データが自動で読み込まれます。</div>
+            <div class="input-group">
+                <label class="input-label">受け取ったコード</label>
+                <textarea id="importCodeText" rows="4" placeholder="コードをここに貼り付けてください..."></textarea>
+            </div>
+            <button class="btn" id="importBtn">📥 読み込む</button>
         </div>`;
 
     el.querySelector("#nurseName").addEventListener("input", e => { state.nurseName = e.target.value; persist(); });
     el.querySelector("#evaluatorName").addEventListener("input", e => { state.evaluatorName = e.target.value; persist(); });
     el.querySelector("#comment").addEventListener("input", e => { state.comment = e.target.value; persist(); });
+    el.querySelector("#importBtn").addEventListener("click", () => {
+        const code = el.querySelector("#importCodeText").value.trim();
+        if (!code) { showToast("コードを入力してください", "#e07a5f"); return; }
+        if (applyImportCode(code)) {
+            el.querySelector("#importCodeText").value = "";
+            el.querySelector("#nurseName").value      = state.nurseName;
+            el.querySelector("#comment").value        = state.comment;
+            showToast("✅ データを読み込みました！「他者評価」画面に進んでください");
+        } else {
+            showToast("❌ コードが正しくありません。もう一度確認してください", "#e05555");
+        }
+    });
 }
 
 /* eval */
@@ -524,6 +613,12 @@ function renderEval(el, prefix, title, description) {
     const nullCount = countNull(prefix);
     const warnHtml  = nullCount > 0
         ? `<div class="warning-box" id="unevalWarn">⚠️ まだ <strong>${nullCount}カテゴリ</strong> が未評価です。スライダーを動かして評価してください。</div>`
+        : "";
+
+    const exportBtnHtml = prefix === "self"
+        ? `<div style="text-align:right;margin-bottom:12px">
+             <button class="btn" id="exportBtn">📤 自己評価を指導者に送る</button>
+           </div>`
         : "";
 
     const expandersHtml = CATEGORIES.map(cat => {
@@ -556,6 +651,7 @@ function renderEval(el, prefix, title, description) {
     el.innerHTML = `
         <h2>${title}</h2>
         <div class="guide-box">${description}<br><br>${SCORE_LEGEND}</div>
+        ${exportBtnHtml}
         ${warnHtml}
         ${expandersHtml}`;
 
@@ -584,6 +680,11 @@ function renderEval(el, prefix, title, description) {
     el.querySelectorAll(".memo-input").forEach(ta => {
         ta.addEventListener("input", () => { state.memo[ta.dataset.key] = ta.value; persist(); });
     });
+
+    if (prefix === "self") {
+        const exportBtn = el.querySelector("#exportBtn");
+        if (exportBtn) exportBtn.addEventListener("click", openExportModal);
+    }
 }
 
 /* result */
@@ -732,13 +833,65 @@ function buildRadar(labels, selfData, mentorData) {
 }
 
 /* save */
+function showToast(msg, color = "#4caf8a") {
+    const toast = document.getElementById("toast");
+    toast.textContent  = msg;
+    toast.style.background = color;
+    toast.style.display    = "block";
+    setTimeout(() => { toast.style.display = "none"; }, 3500);
+}
+
 function doSave() {
     persist();
-    const name  = state.nurseName || "（名前未入力）";
-    const toast = document.getElementById("toast");
-    toast.textContent = `✅ ${name} さんの評価ログを保存しました。`;
-    toast.style.display = "block";
-    setTimeout(() => { toast.style.display = "none"; }, 3000);
+    const name = state.nurseName || "（名前未入力）";
+    showToast(`✅ ${name} さんの評価ログを保存しました。`);
+}
+
+/* export / import */
+function makeExportCode() {
+    const data = {
+        nurseName: state.nurseName,
+        comment:   state.comment,
+        self:      state.self,
+        memo:      state.memo
+    };
+    return btoa(encodeURIComponent(JSON.stringify(data)));
+}
+
+function applyImportCode(code) {
+    try {
+        const data = JSON.parse(decodeURIComponent(atob(code.trim())));
+        if (data.nurseName !== undefined) state.nurseName = data.nurseName;
+        if (data.comment   !== undefined) state.comment   = data.comment;
+        if (data.self)  Object.assign(state.self,  data.self);
+        if (data.memo)  Object.assign(state.memo,  data.memo);
+        persist();
+        return true;
+    } catch(_) { return false; }
+}
+
+function openExportModal() {
+    const code = makeExportCode();
+    document.getElementById("exportCodeText").value = code;
+    document.getElementById("exportModal").style.display = "flex";
+    const copyBtn = document.getElementById("copyCodeBtn");
+    const newBtn  = copyBtn.cloneNode(true);
+    copyBtn.parentNode.replaceChild(newBtn, copyBtn);
+    newBtn.addEventListener("click", () => {
+        const ta = document.getElementById("exportCodeText");
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(code).catch(() => { ta.select(); document.execCommand("copy"); });
+        } else {
+            ta.select();
+            document.execCommand("copy");
+        }
+        newBtn.textContent = "✅ コピーしました！";
+        setTimeout(() => { newBtn.textContent = "📋 コピーする"; }, 2500);
+    });
+}
+
+function closeExportModal() {
+    document.getElementById("exportModal").style.display = "none";
 }
 
 /* bootstrap */
