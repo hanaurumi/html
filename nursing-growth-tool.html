@@ -651,9 +651,9 @@ function renderEval(el, prefix, title, description) {
     el.innerHTML = `
         <h2>${title}</h2>
         <div class="guide-box">${description}<br><br>${SCORE_LEGEND}</div>
-        ${exportBtnHtml}
         ${warnHtml}
-        ${expandersHtml}`;
+        ${expandersHtml}
+        ${exportBtnHtml}`;
 
     el.querySelectorAll(".eval-slider").forEach(slider => {
         slider.addEventListener("input", () => {
