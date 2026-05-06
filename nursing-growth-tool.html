@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>看護師2年目 成長支援ツール</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --base-text: #233B6C;
+            --muted-text: #7d8497;
+            --pale-mint: #f1fbf7;
+            --pale-lavender: #f6f3ff;
+            --line: #e6e1f2;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background: #fffaf7;
+            color: var(--base-text);
+            min-height: 100vh;
+        }
+
+        /* HEADER */
+        .app-header {
+            background: #fffaf7;
+            border-bottom: 1px solid #f0e8f4;
+            padding: 16px 28px 12px;
+        }
+        .app-header h1 {
+            color: #68628a;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        /* LAYOUT */
+        .app-layout {
+            display: flex;
+            min-height: calc(100vh - 110px);
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 228px;
+            flex-shrink: 0;
+            background: #f5efff;
+            border-right: 1px solid var(--line);
+            padding: 18px 14px;
+            position: sticky;
+            top: 0;
+            height: calc(100vh - 110px);
+            overflow-y: auto;
+            align-self: flex-start;
+        }
+        .nav-label { font-size: 12px; color: #8b83a8; margin-bottom: 6px; font-weight: 500; }
+        .nav-button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 9px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'Noto Sans JP', sans-serif;
+            color: #68628a;
+            background: transparent;
+            margin-bottom: 3px;
+            transition: background 0.15s;
+        }
+        .nav-button:hover { background: #e8e0ff; }
+        .nav-button.active { background: #ddd6ff; font-weight: 700; color: #5f578b; }
+        .sidebar hr { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
+        .step-indicator { background: #f0ebff; border-radius: 10px; padding: 12px 14px; }
+        .step-item { font-size: 13px; padding: 3px 0; color: #68628a; }
+        .step-active { font-weight: 800; color: #5f578b !important; }
+
+        /* MAIN */
+        .main-content { flex: 1; padding: 26px 32px 48px; overflow-y: auto; }
+        h2 { color: #68628a; font-size: 18px; margin-bottom: 10px; }
+        h3 { color: #68628a; font-size: 15px; margin-bottom: 8px; }
+        hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
+
+        /* GUIDE BOX */
+        .guide-box {
+            background: var(--pale-lavender);
+            border: 1px solid #e3def8;
+            border-radius: 8px;
+            color: #68628a;
+            font-size: 14px;
+            padding: 14px 16px;
+            margin: 8px 0 18px;
+            line-height: 1.7;
+        }
+
+        /* WARNING */
+        .warning-box {
+            background: #fff8e6;
+            border: 1px solid #f5d87a;
+            border-radius: 6px;
+            color: #7a6520;
+            font-size: 13px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+        }
+
+        /* EXPANDER */
+        details.expander {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(122,112,157,0.08);
+            margin-bottom: 14px;
+            overflow: hidden;
+        }
+        details.expander > summary {
+            background: #eee8ff;
+            border-bottom: 1px solid #dfd6f6;
+            padding: 10px 14px;
+            cursor: pointer;
+            list-style: none;
+            color: #5f578b;
+            font-size: 15px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+        }
+        details.expander > summary::-webkit-details-marker { display: none; }
+        details.expander > summary::after {
+            content: '▼';
+            margin-left: auto;
+            font-size: 11px;
+            color: #9080d0;
+            transition: transform 0.2s;
+        }
+        details.expander:not([open]) > summary::after { transform: rotate(-90deg); }
+        .expander-body { padding: 14px 16px; }
+
+        /* SLIDER */
+        .slider-wrap { margin: 8px 0 4px; }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+            background: linear-gradient(
+                to right,
+                #a99ce3 0%,
+                #a99ce3 var(--fill, 50%),
+                #d9dde5 var(--fill, 50%),
+                #d9dde5 100%
+            );
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            background: #a99ce3;
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            background: #a99ce3;
+            cursor: pointer;
+            border: 2px solid #fff;
+        }
+        .slider-ticks {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--muted-text);
+            margin-top: 3px;
+        }
+        .score-caption {
+            display: inline-block;
+            background: #f0ebff;
+            color: #5f578b;
+            font-size: 13px;
+            padding: 3px 10px;
+            border-radius: 12px;
+            margin-top: 6px;
+        }
+
+        /* INDICATORS */
+        .metric-note { color: var(--muted-text); font-size: 13px; margin: 10px 0 4px; }
+        .question-text {
+            background: var(--pale-mint);
+            border: 1px solid #dcefe8;
+            border-radius: 8px;
+            color: #526f68;
+            font-size: 14px;
+            line-height: 1.75;
+            margin: 5px 0;
+            padding: 8px 12px;
+        }
+        .memo-label { color: var(--muted-text); font-size: 13px; margin: 12px 0 4px; }
+
+        /* INPUTS */
+        .input-group { margin-bottom: 16px; }
+        .input-label { display: block; font-size: 14px; color: #68628a; margin-bottom: 5px; }
+        input[type="text"], textarea {
+            width: 100%;
+            border: 1px solid #d9dde5;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+            font-family: 'Noto Sans JP', sans-serif;
+            color: #4f5c72;
+            background: #f3f4f6;
+            outline: none;
+            resize: vertical;
+        }
+        input[type="text"]:focus, textarea:focus {
+            border-color: #b8afdf;
+            box-shadow: 0 0 0 2px rgba(184,175,223,0.25);
+        }
+        .col2 { display: flex; gap: 16px; }
+        .col2 > * { flex: 1; }
+
+        /* BUTTON */
+        .btn {
+            background: #a99ce3;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 22px;
+            font-size: 14px;
+            font-family: 'Noto Sans JP', sans-serif;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn:hover { background: #9080d0; }
+        .btn-full { width: 100%; }
+
+        /* TABLE */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .data-table th {
+            background: #f0ebff;
+            color: #68628a;
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 2px solid var(--line);
+            white-space: nowrap;
+        }
+        .data-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); color: #4f5c72; }
+        .data-table tr:nth-child(even) td { background: #fafafa; }
+
+        /* RESULT LAYOUT */
+        .result-cols { display: flex; gap: 28px; align-items: flex-start; }
+        .result-chart-col { flex: 1.4; min-width: 0; }
+        .result-table-col { flex: 1; min-width: 240px; }
+        .chart-wrap { position: relative; width: 100%; height: 420px; }
+
+        /* ALERTS */
+        .alert {
+            border-radius: 6px;
+            font-size: 14px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            line-height: 1.65;
+        }
+        .alert-warning {
+            background: #fff8e6;
+            border: 1px solid #f5d87a;
+            border-left: 4px solid #f0c000;
+            color: #7a6520;
+        }
+        .alert-error {
+            background: #fff0f0;
+            border: 1px solid #ffaaaa;
+            border-left: 4px solid #e05555;
+            color: #6b2020;
+        }
+        .alert-success {
+            background: #f0fff8;
+            border: 1px solid #7dd9b0;
+            border-left: 4px solid #3bcc88;
+            color: #1a5c3a;
+        }
+
+        /* INFO BOX */
+        .info-box {
+            background: var(--pale-mint);
+            border: 1px solid #dcefe8;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 14px;
+            color: #526f68;
+            margin-top: 4px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+        }
+
+        /* TOAST */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #4caf8a;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Noto Sans JP', sans-serif;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+            display: none;
+        }
+
+        .caption { color: var(--muted-text); font-size: 13px; }
+
+        @media (max-width: 768px) {
+            .app-layout { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--line); }
+            .main-content { padding: 18px 16px 32px; }
+            .result-cols { flex-direction: column; }
+            .col2 { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="app-header">
+    <h1>🏥 看護師2年目 成長支援可視化システム</h1>
+    <div class="guide-box">
+        自己評価と他者評価を別々に入力し、最後に重ねて確認する<strong>面談支援ツール</strong>です。<br>
+        ① 基本情報 → ② 自己評価 → ③ 他者評価 → ④ 結果確認 の順に進めてください。
+    </div>
+</header>
+
+<div class="app-layout">
+    <aside class="sidebar">
+        <div class="nav-label">画面を選択</div>
+        <button class="nav-button active" data-screen="info">基本情報</button>
+        <button class="nav-button" data-screen="self">自己評価</button>
+        <button class="nav-button" data-screen="mentor">他者評価（評価者）</button>
+        <button class="nav-button" data-screen="result">結果確認</button>
+        <hr>
+        <div class="step-indicator" id="step-indicator"></div>
+    </aside>
+
+    <main class="main-content" id="main-content"></main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATEGORIES = [
+    {
+        key: "考える力", full: "① 考える力", short: "考える力",
+        items: [
+            "重症度や緊急度で優先順位を判断し、観察順序の根拠を言える",
+            "患者の微細な変化を病態に基づきアセスメントし、言語化できる",
+            "次に起こりうるリスクを予測し、事前準備・医師・看護師への助言ができる"
+        ]
+    },
+    {
+        key: "つながる力", full: "② つながる力", short: "つながる力",
+        items: [
+            "ISBARなどを活用し、簡潔・要点を絞った報告ができる",
+            "分からないことを放置せず、適切な相手に確認する行動が取れる",
+            "周囲の状況を把握し、自主的に協力を申し出ることができる"
+        ]
+    },
+    {
+        key: "まわす力", full: "③ 業務をまわす力（タスク管理）", short: "まわす力",
+        items: [
+            "業務全体の流れを読み、多重課題時も優先順位を調整できる",
+            "焦ったときに一度立ち止まり、情報を整理し直せる",
+            "物品準備や後片付けを効率よく、先回りして行える"
+        ]
+    },
+    {
+        key: "看護の質", full: "④ 看護の質", short: "看護の質",
+        items: [
+            "実践する看護ケアの根拠（エビデンス）を言語化できる",
+            "患者の個別性を理解し、反応に合わせたケアの調整ができる",
+            "リフレクションを自己で行い、次の行動に活かせる"
+        ]
+    },
+    {
+        key: "折れない力", full: "⑤ 折れずに成長", short: "折れない力",
+        items: [
+            "自分の不安やストレスを自覚し、言葉にして相談できる",
+            "一人で抱え込まず、キャパ超えの前にヘルプを出せる",
+            "自分のできている部分も客観的に認め、言語化できる"
+        ]
+    },
+    {
+        key: "2年目移行", full: "⑥ 2年目への移行", short: "2年目移行",
+        items: [
+            "指示待ちではなく、自らのアセスメントに基づき行動できる",
+            "自分の課題を自覚し、自主的な学習を継続できている",
+            "後輩の状況に配慮し、必要時に具体的な助言ができる"
+        ]
+    }
+];
+
+const SCORE_OPTS = {
+    1: { label: "1 未到達",   desc: "支援があっても難しい" },
+    2: { label: "2 要支援",   desc: "助言があればできる" },
+    3: { label: "3 成長中",   desc: "場面により達成できる" },
+    4: { label: "4 概ね自立", desc: "多くの場面で実践できる" },
+    5: { label: "5 完全自律", desc: "根拠を持って自立的に実践できる" }
+};
+
+const STEPS = ["① 基本情報", "② 自己評価", "③ 他者評価", "④ 結果確認"];
+const SCREEN_IDX = { info: 0, self: 1, mentor: 2, result: 3 };
+const SCORE_LEGEND = "💡 スコア基準：1=未到達 ／ 2=要支援 ／ 3=成長中 ／ 4=概ね自立 ／ 5=完全自律";
+
+let state = {
+    nurseName: "",
+    evaluatorName: "",
+    comment: "",
+    self:   Object.fromEntries(CATEGORIES.map(c => [c.key, null])),
+    mentor: Object.fromEntries(CATEGORIES.map(c => [c.key, null])),
+    memo:   Object.fromEntries(CATEGORIES.map(c => [c.key, ""]))
+};
+
+let radarChart = null;
+
+/* --- persistence --- */
+function persist() {
+    try { localStorage.setItem("nursingGrowthTool_v1", JSON.stringify(state)); } catch(_) {}
+}
+
+function loadPersisted() {
+    try {
+        const raw = localStorage.getItem("nursingGrowthTool_v1");
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        if (s.nurseName     !== undefined) state.nurseName     = s.nurseName;
+        if (s.evaluatorName !== undefined) state.evaluatorName = s.evaluatorName;
+        if (s.comment       !== undefined) state.comment       = s.comment;
+        if (s.self)   Object.assign(state.self,   s.self);
+        if (s.mentor) Object.assign(state.mentor, s.mentor);
+        if (s.memo)   Object.assign(state.memo,   s.memo);
+    } catch(_) {}
+}
+
+/* --- utils --- */
+function esc(v) {
+    return String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function fillPct(val) { return ((val - 1) / 4 * 100).toFixed(2) + "%"; }
+function getScore(prefix, key) { return state[prefix][key] ?? 3; }
+function countNull(prefix) { return CATEGORIES.filter(c => state[prefix][c.key] === null).length; }
+
+/* --- navigation --- */
+function switchScreen(id) {
+    document.querySelectorAll(".nav-button").forEach(b =>
+        b.classList.toggle("active", b.dataset.screen === id)
+    );
+    renderStepIndicator(id);
+    renderScreen(id);
+    document.getElementById("main-content").scrollTop = 0;
+}
+
+function renderStepIndicator(id) {
+    const idx = SCREEN_IDX[id] ?? 0;
+    document.getElementById("step-indicator").innerHTML = STEPS.map((s, i) => {
+        const icon = i < idx ? "✅" : i === idx ? "▶" : "○";
+        const cls  = i === idx ? "step-item step-active" : "step-item";
+        return `<div class="${cls}">${icon} ${s}</div>`;
+    }).join("");
+}
+
+/* --- screens --- */
+function renderScreen(id) {
+    const el = document.getElementById("main-content");
+    if      (id === "info")   renderInfo(el);
+    else if (id === "self")   renderEval(el, "self",   "✏️ 自己評価",         "本人が自分の実践を振り返り、現在地を入力する画面です。スライダーを動かして評価してください。");
+    else if (id === "mentor") renderEval(el, "mentor", "👁️ 他者評価（評価者）", "指導者・評価者が観察した実践状況を入力します。具体的な場面を思い浮かべながら評価してください。");
+    else if (id === "result") renderResult(el);
+}
+
+/* info */
+function renderInfo(el) {
+    el.innerHTML = `
+        <h2>👤 基本情報</h2>
+        <div class="guide-box">対象者と評価者の情報を入力してください。</div>
+        <div class="col2">
+            <div class="input-group">
+                <label class="input-label">看護師名</label>
+                <input type="text" id="nurseName" placeholder="例：看護 花子" value="${esc(state.nurseName)}">
+            </div>
+            <div class="input-group">
+                <label class="input-label">評価者名</label>
+                <input type="text" id="evaluatorName" placeholder="例：指導 太郎" value="${esc(state.evaluatorName)}">
+            </div>
+        </div>
+        <hr>
+        <h2>📝 面談メモ（全体）</h2>
+        <div class="input-group">
+            <label class="input-label">面談での気づき・次月の目標などを入力してください</label>
+            <textarea id="comment" rows="7" placeholder="例：コミュニケーションに自信が持てていない様子。成功体験を意識的に設ける。">${esc(state.comment)}</textarea>
+        </div>`;
+
+    el.querySelector("#nurseName").addEventListener("input", e => { state.nurseName = e.target.value; persist(); });
+    el.querySelector("#evaluatorName").addEventListener("input", e => { state.evaluatorName = e.target.value; persist(); });
+    el.querySelector("#comment").addEventListener("input", e => { state.comment = e.target.value; persist(); });
+}
+
+/* eval */
+function renderEval(el, prefix, title, description) {
+    const nullCount = countNull(prefix);
+    const warnHtml  = nullCount > 0
+        ? `<div class="warning-box" id="unevalWarn">⚠️ まだ <strong>${nullCount}カテゴリ</strong> が未評価です。スライダーを動かして評価してください。</div>`
+        : "";
+
+    const expandersHtml = CATEGORIES.map(cat => {
+        const val  = state[prefix][cat.key] ?? 3;
+        const opt  = SCORE_OPTS[val];
+        const pct  = fillPct(val);
+        const itemsHtml = cat.items.map(it => `<div class="question-text">・${esc(it)}</div>`).join("");
+        return `
+<details class="expander" open>
+  <summary>${esc(cat.full)}</summary>
+  <div class="expander-body">
+    <div class="slider-wrap">
+      <input type="range" class="eval-slider" min="1" max="5" value="${val}"
+             data-prefix="${prefix}" data-key="${esc(cat.key)}"
+             style="--fill:${pct}">
+      <div class="slider-ticks">
+        <span>1 未到達</span><span>2 要支援</span><span>3 成長中</span><span>4 概ね自立</span><span>5 完全自律</span>
+      </div>
+    </div>
+    <span class="score-caption" id="cap-${prefix}-${esc(cat.key)}">選択中：<strong>${esc(opt.label)}</strong> — ${esc(opt.desc)}</span>
+    <div class="metric-note">【判断の参考にする行動指標】</div>
+    ${itemsHtml}
+    <div class="memo-label">📝 このカテゴリの具体的エピソード・メモ（任意）</div>
+    <textarea rows="3" class="memo-input" data-key="${esc(cat.key)}"
+              placeholder="例：〇〇場面でISBARを使って報告できた">${esc(state.memo[cat.key])}</textarea>
+  </div>
+</details>`;
+    }).join("");
+
+    el.innerHTML = `
+        <h2>${title}</h2>
+        <div class="guide-box">${description}<br><br>${SCORE_LEGEND}</div>
+        ${warnHtml}
+        ${expandersHtml}`;
+
+    el.querySelectorAll(".eval-slider").forEach(slider => {
+        slider.addEventListener("input", () => {
+            const p = slider.dataset.prefix;
+            const k = slider.dataset.key;
+            const v = parseInt(slider.value);
+            slider.style.setProperty("--fill", fillPct(v));
+            state[p][k] = v;
+            persist();
+            const cap = document.getElementById(`cap-${p}-${k}`);
+            if (cap) {
+                const opt = SCORE_OPTS[v];
+                cap.innerHTML = `選択中：<strong>${esc(opt.label)}</strong> — ${esc(opt.desc)}`;
+            }
+            const n    = countNull(p);
+            const warn = document.getElementById("unevalWarn");
+            if (warn) {
+                if (n === 0) warn.remove();
+                else warn.innerHTML = `⚠️ まだ <strong>${n}カテゴリ</strong> が未評価です。スライダーを動かして評価してください。`;
+            }
+        });
+    });
+
+    el.querySelectorAll(".memo-input").forEach(ta => {
+        ta.addEventListener("input", () => { state.memo[ta.dataset.key] = ta.value; persist(); });
+    });
+}
+
+/* result */
+function renderResult(el) {
+    const selfVals   = CATEGORIES.map(c => getScore("self",   c.key));
+    const mentorVals = CATEGORIES.map(c => getScore("mentor", c.key));
+    const labels     = CATEGORIES.map(c => c.short);
+
+    /* gap analysis */
+    let gapHtml = "";
+    let hasGap  = false;
+    CATEGORIES.forEach((cat, i) => {
+        const gap = selfVals[i] - mentorVals[i];
+        if (gap <= -1.5) {
+            hasGap  = true;
+            gapHtml += `<div class="alert alert-warning">⚠️ <strong>${esc(cat.short)}</strong>（${esc(cat.full)}）：【過小評価の可能性】<br>他者評価の方が高い状態です。成功体験を一緒に振り返り、自己効力感を育てましょう。</div>`;
+        } else if (gap >= 1.5) {
+            hasGap  = true;
+            gapHtml += `<div class="alert alert-error">🚨 <strong>${esc(cat.short)}</strong>（${esc(cat.full)}）：【認識のズレあり】<br>本人の自己評価が他者評価より高い状態です。具体的な場面を振り返り、期待する行動レベルを一緒に確認しましょう。</div>`;
+        }
+    });
+    if (!hasGap) {
+        gapHtml = `<div class="alert alert-success">✅ 自己評価と他者評価の大きな乖離はありません。<br>対話では強みをさらに伸ばす挑戦と、次のステップを確認しましょう。</div>`;
+    }
+
+    /* table rows */
+    const rows = CATEGORIES.map((cat, i) => {
+        const d     = selfVals[i] - mentorVals[i];
+        const dStr  = d > 0 ? `+${d}` : String(d);
+        const bold  = Math.abs(d) >= 1.5;
+        const color = bold ? (d > 0 ? "#c0392b" : "#e67e22") : "#4f5c72";
+        return `<tr>
+            <td>${esc(cat.short)}</td>
+            <td style="text-align:center">${selfVals[i]}</td>
+            <td style="text-align:center">${mentorVals[i]}</td>
+            <td style="text-align:center;color:${color};font-weight:${bold ? 700 : 400}">${dStr}</td>
+        </tr>`;
+    }).join("");
+
+    /* memos */
+    const hasMemo = CATEGORIES.some(c => state.memo[c.key]);
+    const memosHtml = hasMemo
+        ? CATEGORIES.filter(c => state.memo[c.key])
+            .map(c => `<div style="margin-bottom:14px"><strong>${esc(c.full)}</strong><div class="info-box">${esc(state.memo[c.key])}</div></div>`)
+            .join("")
+        : `<p class="caption">各評価画面でカテゴリごとにメモを入力すると、ここに表示されます。</p>`;
+
+    const commentHtml = state.comment
+        ? `<div class="info-box">${esc(state.comment)}</div>`
+        : `<p class="caption">基本情報画面で面談メモを入力すると、ここに表示されます。</p>`;
+
+    el.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h2>📊 成長の可視化</h2>
+            <button class="btn" id="saveBtnTop">💾 評価データを保存</button>
+        </div>
+        <div class="guide-box">
+            自己評価と他者評価を重ね、<strong>強みや認識の違いを対話の材料</strong>にします。<br>
+            未評価カテゴリは自動的に3（成長中）として表示されます。
+        </div>
+        <hr>
+        <div class="result-cols">
+            <div class="result-chart-col">
+                <div class="chart-wrap"><canvas id="radarCanvas"></canvas></div>
+            </div>
+            <div class="result-table-col">
+                <h3>📋 評価一覧</h3>
+                <table class="data-table">
+                    <thead><tr>
+                        <th>カテゴリ</th>
+                        <th style="text-align:center">本人</th>
+                        <th style="text-align:center">他者</th>
+                        <th style="text-align:center">差</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <br>
+                <h3>👤 対象者情報</h3>
+                <p style="font-size:14px;color:#4f5c72;margin:4px 0">看護師名：${esc(state.nurseName) || "（未入力）"}</p>
+                <p style="font-size:14px;color:#4f5c72;margin:4px 0">評価者名：${esc(state.evaluatorName) || "（未入力）"}</p>
+            </div>
+        </div>
+        <hr>
+        <h2>🔍 乖離分析と面談アドバイス</h2>
+        ${gapHtml}
+        <hr>
+        <h2>📝 カテゴリ別エピソード・メモ</h2>
+        ${memosHtml}
+        <hr>
+        <h2>🗒️ 面談メモ（全体）</h2>
+        ${commentHtml}
+        <hr>
+        <button class="btn btn-full" id="saveBtnBottom">💾 評価データを保存（下部）</button>`;
+
+    document.getElementById("saveBtnTop").addEventListener("click", doSave);
+    document.getElementById("saveBtnBottom").addEventListener("click", doSave);
+    buildRadar(labels, selfVals, mentorVals);
+}
+
+function buildRadar(labels, selfData, mentorData) {
+    if (radarChart) { radarChart.destroy(); radarChart = null; }
+    const ctx = document.getElementById("radarCanvas");
+    if (!ctx) return;
+    radarChart = new Chart(ctx, {
+        type: "radar",
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: "本人評価",
+                    data: selfData,
+                    borderColor: "#6c8ca4",
+                    backgroundColor: "rgba(108,140,164,0.15)",
+                    borderWidth: 2,
+                    pointBackgroundColor: "#6c8ca4",
+                    pointRadius: 4
+                },
+                {
+                    label: "他者評価",
+                    data: mentorData,
+                    borderColor: "#d78978",
+                    backgroundColor: "rgba(215,137,120,0.15)",
+                    borderWidth: 2,
+                    pointBackgroundColor: "#d78978",
+                    pointRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                r: {
+                    min: 0, max: 5,
+                    ticks: { stepSize: 1, color: "#7d8497", font: { size: 11 }, backdropColor: "transparent" },
+                    grid: { color: "#d9e4df" },
+                    angleLines: { color: "#edf3f0" },
+                    pointLabels: { color: "#68628a", font: { size: 13, family: "'Noto Sans JP', sans-serif" } }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: "#68628a", font: { size: 13, family: "'Noto Sans JP', sans-serif" } } }
+            }
+        }
+    });
+}
+
+/* save */
+function doSave() {
+    persist();
+    const name  = state.nurseName || "（名前未入力）";
+    const toast = document.getElementById("toast");
+    toast.textContent = `✅ ${name} さんの評価ログを保存しました。`;
+    toast.style.display = "block";
+    setTimeout(() => { toast.style.display = "none"; }, 3000);
+}
+
+/* bootstrap */
+function init() {
+    loadPersisted();
+    document.querySelectorAll(".nav-button").forEach(btn => {
+        btn.addEventListener("click", () => switchScreen(btn.dataset.screen));
+    });
+    renderStepIndicator("info");
+    renderScreen("info");
+}
+
+init();
+</script>
+</body>
+</html>
