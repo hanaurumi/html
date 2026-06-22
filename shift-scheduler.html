@@ -137,6 +137,48 @@
       </div>
     </section>
     <section>
+      <h2>勤務回数・連続日数の上限</h2>
+      <p class="note">以下はすべて自動生成アルゴリズムの上限値です。変更後は「この設定を反映する」を押してください。</p>
+      <div class="field-row">
+        <label>夜勤上限（一般スタッフ）</label>
+        <input type="number" id="nightCapGeneralInput" min="1" max="31" style="width:80px;">
+        <span class="note" style="margin:0;">回／月</span>
+      </div>
+      <div class="field-row">
+        <label>夜勤上限（1年目）</label>
+        <input type="number" id="nightCap1stInput" min="0" max="31" style="width:80px;">
+        <span class="note" style="margin:0;">回／月</span>
+      </div>
+      <div class="field-row">
+        <label>夜勤上限（夜勤専従）</label>
+        <input type="number" id="nightCapNightOnlyInput" min="1" max="31" style="width:80px;">
+        <span class="note" style="margin:0;">回／月</span>
+      </div>
+      <div class="field-row">
+        <label>遅B上限</label>
+        <input type="number" id="lateCapInput" min="0" max="31" style="width:80px;">
+        <span class="note" style="margin:0;">回／月</span>
+      </div>
+      <div class="field-row">
+        <label>連続勤務の上限</label>
+        <input type="number" id="maxConsecutiveDaysInput" min="1" max="31" style="width:80px;">
+        <span class="note" style="margin:0;">日</span>
+      </div>
+      <div class="field-row">
+        <label>夜勤専従：連続夜勤の上限</label>
+        <input type="number" id="nightOnlyMaxStreakInput" min="1" max="10" style="width:80px;">
+        <span class="note" style="margin:0;">回連続まで</span>
+      </div>
+      <div class="field-row">
+        <label>夜勤専従：連続夜勤後の強制休み</label>
+        <input type="number" id="nightOnlyForcedRestInput" min="1" max="10" style="width:80px;">
+        <span class="note" style="margin:0;">日</span>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
+      </div>
+    </section>
+    <section>
       <h2>カレンダーで個別の日を上書き</h2>
       <p class="note">祝日の自動判定がずれている場合や、特定の日だけ夜勤パターンを変えたい場合はここで上書きできます。</p>
       <div class="scroll-wrap" style="max-height:600px;">
@@ -208,6 +250,7 @@
     </div>
     <div class="actions">
       <button class="btn" onclick="runGeneration()">勤務表を自動生成する</button>
+      <button class="btn secondary" id="exportCsvBtn" onclick="exportCSV()" style="display:none;">CSVエクスポート</button>
     </div>
     <section id="resultSection" style="display:none;">
       <h2>生成結果</h2>
@@ -277,6 +320,13 @@ let nenkyuCapDefault = 2;
 let staffOverrides = {};        // staffId -> {weekendNightEnabled:bool}
 let requests = {};              // staffId -> {day: 'night'|'late'|'day'|'off'}
 let nightOnlyStaffId = '';      // 今月の夜勤専従（空文字=なし）
+let nightCapGeneral = 5;        // 夜勤上限（一般スタッフ）
+let nightCap1st = 2;            // 夜勤上限（1年目）
+let nightCapNightOnly = 9;      // 夜勤上限（夜勤専従）
+let lateCapSetting = 3;         // 遅B上限
+let maxConsecutiveDays = 5;     // 連続勤務の上限
+let nightOnlyMaxStreak = 2;     // 夜勤専従：連続夜勤の上限
+let nightOnlyForcedRest = 2;    // 夜勤専従：連続夜勤後の強制休み日数
 let schedule = {};
 let warnings = [];
 let lastGeneratedState = null;
@@ -469,6 +519,13 @@ async function loadSettings(){
       weekendDayMin = s.weekendDayMin || 6;
       nenkyuCapDefault = (s.nenkyuCapDefault!==undefined && s.nenkyuCapDefault!==null) ? s.nenkyuCapDefault : 2;
       staffOverrides = s.staffOverrides || {};
+      if(s.nightCapGeneral!=null) nightCapGeneral = s.nightCapGeneral;
+      if(s.nightCap1st!=null) nightCap1st = s.nightCap1st;
+      if(s.nightCapNightOnly!=null) nightCapNightOnly = s.nightCapNightOnly;
+      if(s.lateCapSetting!=null) lateCapSetting = s.lateCapSetting;
+      if(s.maxConsecutiveDays!=null) maxConsecutiveDays = s.maxConsecutiveDays;
+      if(s.nightOnlyMaxStreak!=null) nightOnlyMaxStreak = s.nightOnlyMaxStreak;
+      if(s.nightOnlyForcedRest!=null) nightOnlyForcedRest = s.nightOnlyForcedRest;
     }
   }catch(e){ /* 初回はキーなしでエラー、正常 */ }
 }
@@ -479,7 +536,9 @@ function saveSettings(){
     try{
       await window.storage.set(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
-        dateOverridePattern, holidayOverride, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides
+        dateOverridePattern, holidayOverride, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides,
+        nightCapGeneral, nightCap1st, nightCapNightOnly, lateCapSetting,
+        maxConsecutiveDays, nightOnlyMaxStreak, nightOnlyForcedRest
       }), false);
     }catch(e){ /* ignore */ }
   }, 300);
@@ -551,6 +610,13 @@ function renderDayMinInputs(){
   document.getElementById('weekdayDayMinInput').value = weekdayDayMin;
   document.getElementById('weekendDayMinInput').value = weekendDayMin;
   document.getElementById('nenkyuCapInput').value = nenkyuCapDefault;
+  document.getElementById('nightCapGeneralInput').value = nightCapGeneral;
+  document.getElementById('nightCap1stInput').value = nightCap1st;
+  document.getElementById('nightCapNightOnlyInput').value = nightCapNightOnly;
+  document.getElementById('lateCapInput').value = lateCapSetting;
+  document.getElementById('maxConsecutiveDaysInput').value = maxConsecutiveDays;
+  document.getElementById('nightOnlyMaxStreakInput').value = nightOnlyMaxStreak;
+  document.getElementById('nightOnlyForcedRestInput').value = nightOnlyForcedRest;
 }
 function renderCalOverrideGrid(){
   const grid = document.getElementById('calOverrideGrid');
@@ -584,6 +650,13 @@ function saveAndRerenderSettings(){
   weekendDayMin = parseInt(document.getElementById('weekendDayMinInput').value,10) || 6;
   nenkyuCapDefault = parseInt(document.getElementById('nenkyuCapInput').value,10);
   if(isNaN(nenkyuCapDefault) || nenkyuCapDefault<0) nenkyuCapDefault = 2;
+  nightCapGeneral   = parseInt(document.getElementById('nightCapGeneralInput').value,10) || 5;
+  nightCap1st       = parseInt(document.getElementById('nightCap1stInput').value,10) || 2;
+  nightCapNightOnly = parseInt(document.getElementById('nightCapNightOnlyInput').value,10) || 9;
+  lateCapSetting    = parseInt(document.getElementById('lateCapInput').value,10) || 3;
+  maxConsecutiveDays= parseInt(document.getElementById('maxConsecutiveDaysInput').value,10) || 5;
+  nightOnlyMaxStreak= parseInt(document.getElementById('nightOnlyMaxStreakInput').value,10) || 2;
+  nightOnlyForcedRest=parseInt(document.getElementById('nightOnlyForcedRestInput').value,10) || 2;
   saveSettings();
   renderPeriodLabel();
   renderCalOverrideGrid();
@@ -734,8 +807,7 @@ function clearRequests(){
   saveRequestsDebounced();
 }
 /* ===================== 生成アルゴリズム ===================== */
-function nightCap(s){ return s.exp==='1st' ? 2 : 5; }
-const LATE_CAP = 3;
+function nightCap(s){ return s.exp==='1st' ? nightCap1st : nightCapGeneral; }
 function isJunior(s){ return s.exp==='1st'||s.exp==='2nd'; }
 function generateSchedule(){
   warnings = [];
@@ -777,7 +849,7 @@ function generateSchedule(){
     if(isPlannedRestDay(s,d) && reqOf(s,d)!=='night') return false;
     const st = state[s.id];
     if(st.prevType==='night') return false;
-    if(st.consec>=5) return false;
+    if(st.consec>=maxConsecutiveDays) return false;
     if(st.nightCount>=nightCap(s)) return false;
     const r = reqOf(s,d);
     if(r==='off'||r==='day'||r==='late') return false;
@@ -790,8 +862,8 @@ function generateSchedule(){
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.prevType==='late') return false;
-    if(st.consec>=5) return false;
-    if(st.lateCount>=LATE_CAP) return false;
+    if(st.consec>=maxConsecutiveDays) return false;
+    if(st.lateCount>=lateCapSetting) return false;
     const r = reqOf(s,d);
     if(r==='off'||r==='day'||r==='night') return false;
     return true;
@@ -802,7 +874,7 @@ function generateSchedule(){
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.prevType==='late') return false;
-    if(st.consec>=5) return false;
+    if(st.consec>=maxConsecutiveDays) return false;
     const r = reqOf(s,d);
     if(r==='off'||r==='night'||r==='late') return false;
     return true;
@@ -871,7 +943,7 @@ function generateSchedule(){
         const r = reqOf(s,d);
         if(r==='off'){
           dayAssign[s.id] = {type:'restPendingSpecial'};
-        } else if(st.nightCount<9 && st.nightStreak<2){
+        } else if(st.nightCount<nightCapNightOnly && st.nightStreak<nightOnlyMaxStreak){
           dayAssign[s.id] = {type:'night', leader:false};
         } else {
           dayAssign[s.id] = {type:'restPendingSpecial'};
@@ -943,7 +1015,7 @@ function generateSchedule(){
     }
     // Phase5: 残りの人を「強制休み」「平日固定勤務(時短者)」「休み希望」「フレキシブル」に分類
     let pool = STAFF.filter(s=>!dayAssign[s.id]);
-    let forcedRest = pool.filter(s=> state[s.id].consec>=5 || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d));
+    let forcedRest = pool.filter(s=> state[s.id].consec>=maxConsecutiveDays || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d));
     let remaining = pool.filter(s=> !forcedRest.includes(s));
     // 時短者(土日祝日は休み)は、平日は休み希望がない限り勤務固定にする
     // （公休/祝のラベルを実際の土日祝日にきれいに対応させるため、平日に休みを割り当てない）
@@ -1025,7 +1097,7 @@ function generateSchedule(){
         st.nightCount++; st.consec++; st.workCount++; st.prevType='night'; teamNightCount[s.team]++;
         if(s.id===nightOnlyId){
           st.nightStreak++;
-          if(st.nightStreak>=2){ st.forcedRestDaysLeft = 2; }
+          if(st.nightStreak>=nightOnlyMaxStreak){ st.forcedRestDaysLeft = nightOnlyForcedRest; }
         }
       }
       else if(a.type==='late'){ st.lateCount++; st.consec++; st.workCount++; st.prevType='late'; teamLateCount[s.team]++; }
@@ -1215,6 +1287,44 @@ function runGeneration(){
   document.getElementById('resultSection').style.display='block';
   document.getElementById('warnSection').style.display='block';
   document.getElementById('summarySection').style.display='block';
+  document.getElementById('exportCsvBtn').style.display='';
+}
+function exportCSV(){
+  const dim = daysInMonth();
+  const staff = getActiveStaff();
+  const rows = [];
+  const header = ['氏名','チーム'];
+  for(let d=1; d<=dim; d++) header.push(`${d}(${dowLabel(d)})`);
+  header.push('夜勤','遅B','日勤','明け','公休','祝','年休','特');
+  rows.push(header);
+  staff.forEach(s=>{
+    const row = [s.name, s.team];
+    let night=0,late=0,day=0,rest=0,kou=0,shuku=0,other=0,toku=0;
+    for(let d=1; d<=dim; d++){
+      const a = schedule[s.id] && schedule[s.id][d];
+      if(!a){ row.push(''); continue; }
+      const lbl = cellLabel(a.type) + (a.leader ? '★' : '');
+      row.push(lbl);
+      if(a.type==='night') night++;
+      else if(a.type==='late') late++;
+      else if(a.type==='day') day++;
+      else if(a.type==='rest') rest++;
+      else if(a.type==='公') kou++;
+      else if(a.type==='祝') shuku++;
+      else if(a.type==='年休') other++;
+      else if(a.type==='特') toku++;
+    }
+    row.push(night,late,day,rest,kou,shuku,other,toku);
+    rows.push(row);
+  });
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `勤務表_${currentYear}年${currentMonth}月.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 /* ===================== ルール一覧 ===================== */
 const RULES_KEY = 'ward-app-rules-custom';
@@ -1293,7 +1403,7 @@ function generateDefaultRulesHtml(){
   <ul>
     <li>夜勤の翌日は必ず休み（明け）</li>
     <li>遅Bの翌日は夜勤または休みのみ</li>
-    <li>連続勤務は最大5日まで</li>
+    <li>連続勤務は最大${maxConsecutiveDays}日まで（①基本設定タブで変更可）</li>
   </ul>
   <p><strong>【人数配置（現在の設定値）】</strong></p>
   <ul>
@@ -1303,10 +1413,10 @@ function generateDefaultRulesHtml(){
     <li>日勤のリーダー人数：平日はAチーム・Bチームそれぞれ1名以上、土日祝日はチーム問わず1名以上</li>
     <li>夜勤のリーダー：必ず1名配置</li>
   </ul>
-  <p><strong>【個人の回数上限（固定）】</strong></p>
+  <p><strong>【個人の回数上限（①基本設定タブで変更可）】</strong></p>
   <ul>
-    <li>夜勤：月5回まで（1年目は月2回まで）</li>
-    <li>遅B：月3回まで</li>
+    <li>夜勤：一般スタッフ月${nightCapGeneral}回まで、1年目月${nightCap1st}回まで、夜勤専従月${nightCapNightOnly}回まで</li>
+    <li>遅B：月${lateCapSetting}回まで</li>
     <li>例外を認める場合は、副看護師長等が手動で個別に調整してください（自動生成では上限を超えません）</li>
   </ul>
   <p><strong>【夜勤内の経験者バランス（固定）】</strong></p>
