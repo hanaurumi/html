@@ -420,14 +420,17 @@ function rebuildStaffMap(){ STAFF_MAP = {}; ALL_STAFF.forEach(s=>{ STAFF_MAP[s.i
 rebuildStaffMap();
 function getActiveStaff(){ return ALL_STAFF.filter(s=> s.active!==false); }
 function nextStaffId(){ return ALL_STAFF.reduce((max,s)=>Math.max(max,s.id),0) + 1; }
-/* ===================== 永続化 ===================== */
+/* ===================== 永続化（localStorage） ===================== */
 const SETTINGS_KEY = 'ward-app-settings';
 const STAFF_KEY = 'ward-app-staff';
+const lsGet = (key) => { try{ return localStorage.getItem(key); }catch(e){ return null; } };
+const lsSet = (key, val) => { try{ localStorage.setItem(key, val); }catch(e){} };
+const lsDel = (key) => { try{ localStorage.removeItem(key); }catch(e){} };
 async function loadStaffData(){
   try{
-    const res = await window.storage.get(STAFF_KEY, false);
-    if(res && res.value){
-      const parsed = JSON.parse(res.value);
+    const val = lsGet(STAFF_KEY);
+    if(val){
+      const parsed = JSON.parse(val);
       if(Array.isArray(parsed) && parsed.length>0){ ALL_STAFF = parsed; }
     }
   }catch(e){}
@@ -436,16 +439,16 @@ async function loadStaffData(){
 let staffSaveTimer=null;
 function saveStaffData(){
   clearTimeout(staffSaveTimer);
-  staffSaveTimer = setTimeout(async ()=>{
-    try{ await window.storage.set(STAFF_KEY, JSON.stringify(ALL_STAFF), false); }catch(e){}
+  staffSaveTimer = setTimeout(()=>{
+    try{ lsSet(STAFF_KEY, JSON.stringify(ALL_STAFF)); }catch(e){}
   }, 300);
 }
 function requestsKey(){ return `requests-${currentYear}${pad(currentMonth)}`; }
 async function loadSettings(){
   try{
-    const res = await window.storage.get(SETTINGS_KEY, false);
-    if(res && res.value){
-      const s = JSON.parse(res.value);
+    const val = lsGet(SETTINGS_KEY);
+    if(val){
+      const s = JSON.parse(val);
       currentYear = s.currentYear || currentYear;
       currentMonth = s.currentMonth || currentMonth;
       weekdayPattern = s.weekdayPattern || weekdayPattern;
@@ -462,29 +465,29 @@ async function loadSettings(){
 let settingsSaveTimer=null;
 function saveSettings(){
   clearTimeout(settingsSaveTimer);
-  settingsSaveTimer = setTimeout(async ()=>{
+  settingsSaveTimer = setTimeout(()=>{
     try{
-      await window.storage.set(SETTINGS_KEY, JSON.stringify({
+      lsSet(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
         dateOverridePattern, holidayOverride, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides
-      }), false);
+      }));
     }catch(e){}
   }, 300);
 }
 async function loadRequestsForMonth(){
   requests = {};
   try{
-    const res = await window.storage.get(requestsKey(), false);
-    if(res && res.value){ requests = JSON.parse(res.value); }
+    const val = lsGet(requestsKey());
+    if(val){ requests = JSON.parse(val); }
   }catch(e){}
 }
 let reqSaveTimer=null;
 function saveRequestsDebounced(){
   document.getElementById('saveStatus').textContent = '保存中…';
   clearTimeout(reqSaveTimer);
-  reqSaveTimer = setTimeout(async ()=>{
+  reqSaveTimer = setTimeout(()=>{
     try{
-      await window.storage.set(requestsKey(), JSON.stringify(requests), false);
+      lsSet(requestsKey(), JSON.stringify(requests));
       document.getElementById('saveStatus').textContent = '保存しました（このブラウザのみ）';
     }catch(e){ document.getElementById('saveStatus').textContent = '保存に失敗しました'; }
   }, 400);
@@ -493,13 +496,13 @@ function nightOnlyKey(){ return `nightonly-${currentYear}${pad(currentMonth)}`; 
 async function loadNightOnlyForMonth(){
   nightOnlyStaffId = '';
   try{
-    const res = await window.storage.get(nightOnlyKey(), false);
-    if(res && res.value){ nightOnlyStaffId = res.value; }
+    const val = lsGet(nightOnlyKey());
+    if(val){ nightOnlyStaffId = val; }
   }catch(e){}
 }
 async function setNightOnlyStaff(value){
   nightOnlyStaffId = value;
-  try{ await window.storage.set(nightOnlyKey(), value, false); }catch(e){}
+  try{ lsSet(nightOnlyKey(), value); }catch(e){}
 }
 function renderNightOnlySelect(){
   const sel = document.getElementById('nightOnlySelect');
@@ -1224,14 +1227,14 @@ let customRulesHtml = null;
 let rulesEditing = false;
 async function loadRulesData(){
   try{
-    const res = await window.storage.get(RULES_KEY, false);
-    if(res && res.value){ customRulesHtml = res.value; }
+    const val = lsGet(RULES_KEY);
+    if(val){ customRulesHtml = val; }
   }catch(e){}
 }
 async function saveRulesData(){
   try{
-    if(customRulesHtml===null){ await window.storage.delete(RULES_KEY, false); }
-    else { await window.storage.set(RULES_KEY, customRulesHtml, false); }
+    if(customRulesHtml===null){ lsDel(RULES_KEY); }
+    else { lsSet(RULES_KEY, customRulesHtml); }
   }catch(e){}
 }
 function renderRules(){
