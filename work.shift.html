@@ -47,6 +47,7 @@
   .cell-年休{background:var(--other);color:#5B4B8A;}
   .cell-特{background:var(--toku);color:#1B5E8C;}
   .leader-star{color:var(--leader);margin-left:2px;}
+  .chief-mark{color:#1A6B3C;margin-left:2px;font-size:10px;}
   button.btn{background:var(--accent);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
   button.btn:hover{opacity:0.9;}
   button.btn.secondary{background:#fff;color:var(--accent);border:1px solid var(--accent);}
@@ -221,6 +222,7 @@
         <span><span class="swatch" style="background:var(--other)"></span>年休（公休/祝の枠を超えた休み）</span>
         <span><span class="swatch" style="background:var(--toku)"></span>特（夜勤専従の特別休）</span>
         <span><span class="leader-star">★</span>その日のリーダー</span>
+        <span><span class="chief-mark">◆</span>師長または師長代行（平日日勤のみ）</span>
       </div>
       <p class="note">各セルはプルダウンになっており、生成後にクリックして手動で変更できます（変更すると下の集計にも反映されます）。</p>
       <div class="scroll-wrap">
@@ -382,7 +384,7 @@ function computeQuotas(){
 }
 /* ===================== スタッフデータ ===================== */
 let ALL_STAFF = [
-  {id:1, name:'藤井友晴', role:'副看護師長', exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'A', active:true},
+  {id:1, name:'藤井友晴', role:'副看護師長', exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'A', active:true, actingChief:true},
   {id:3, name:'都丸裕未', role:'スタッフ',   exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'A', active:true},
   {id:4, name:'高山千里', role:'スタッフ',   exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'A', active:true},
   {id:5, name:'遠藤智子', role:'スタッフ',   exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'A', active:true},
@@ -396,7 +398,7 @@ let ALL_STAFF = [
   {id:13,name:'高橋幸子', role:'スタッフ',   exp:'general', leader:false, night:false,   lateB:false, shortTime:'⑮', weekendOff:true,  team:'A', active:true},
   {id:14,name:'小林彩乃', role:'スタッフ',   exp:'1st',     leader:false, night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'A', active:false},
   {id:15,name:'平田彩花', role:'スタッフ',   exp:'1st',     leader:false, night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'A', active:false},
-  {id:2, name:'畠山佳苗', role:'副看護師長', exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'B', active:true},
+  {id:2, name:'畠山佳苗', role:'副看護師長', exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'B', active:true, actingChief:true},
   {id:16,name:'島田恵里', role:'スタッフ',   exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'B', active:true},
   {id:17,name:'園部真琴', role:'スタッフ',   exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'B', active:true},
   {id:18,name:'青葉純子', role:'スタッフ',   exp:'general', leader:true,  night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'B', active:true},
@@ -594,7 +596,7 @@ function applyMonthChange(){
 /* ===================== UI: スタッフ一覧タブ ===================== */
 function renderStaffTable(){
   const t = document.getElementById('staffTable');
-  let html = '<tr><th>有効</th><th>チーム</th><th>氏名</th><th>役職</th><th>経験</th><th>リーダー</th><th>夜勤</th><th>遅B</th><th>時短ラベル</th><th>土日祝日休み</th><th>土日夜勤解禁<br>(1年目のみ)</th><th>年休追加<br>(個別・回/月)</th><th>削除</th></tr>';
+  let html = '<tr><th>有効</th><th>チーム</th><th>氏名</th><th>役職</th><th>経験</th><th>リーダー</th><th>師長代行<br>可否</th><th>夜勤</th><th>遅B</th><th>時短ラベル</th><th>土日祝日休み</th><th>土日夜勤解禁<br>(1年目のみ)</th><th>年休追加<br>(個別・回/月)</th><th>削除</th></tr>';
   ALL_STAFF.forEach(s=>{
     const showWeekendToggle = s.exp==='1st';
     const weekendChecked = weekendNightEnabled(s) ? 'checked' : '';
@@ -612,6 +614,7 @@ function renderStaffTable(){
       <td><input type="text" value="${s.role}" style="width:80px;" onchange="updateStaffField(${s.id},'role',this.value)"></td>
       <td><select onchange="updateStaffField(${s.id},'exp',this.value)">${expOpts}</select></td>
       <td><input type="checkbox" ${s.leader?'checked':''} onchange="updateStaffField(${s.id},'leader',this.checked)"></td>
+      <td><input type="checkbox" ${s.actingChief?'checked':''} title="平日日勤に師長または師長代行として入れる" onchange="updateStaffField(${s.id},'actingChief',this.checked)"></td>
       <td><select onchange="updateStaffField(${s.id},'night',this.value)">${nightOpts}</select></td>
       <td><input type="checkbox" ${s.lateB?'checked':''} onchange="updateStaffField(${s.id},'lateB',this.checked)"></td>
       <td><input type="text" value="${s.shortTime||''}" placeholder="例：①" style="width:50px;" onchange="updateStaffField(${s.id},'shortTime',this.value)"></td>
@@ -626,7 +629,7 @@ function renderStaffTable(){
 function updateStaffField(staffId, field, value){
   const s = STAFF_MAP[staffId];
   if(!s) return;
-  if(field==='leader' || field==='lateB' || field==='weekendOff' || field==='active'){
+  if(field==='leader' || field==='lateB' || field==='weekendOff' || field==='active' || field==='actingChief'){
     s[field] = !!value;
   } else if(field==='night'){
     s.night = value==='true' ? true : value==='false' ? false : 'request';
@@ -640,7 +643,7 @@ function updateStaffField(staffId, field, value){
 }
 function addNewStaff(){
   const id = nextStaffId();
-  ALL_STAFF.push({id, name:'新しいスタッフ', role:'スタッフ', exp:'general', leader:false, night:true, lateB:true, shortTime:null, weekendOff:false, team:'A', active:true});
+  ALL_STAFF.push({id, name:'新しいスタッフ', role:'スタッフ', exp:'general', leader:false, actingChief:false, night:true, lateB:true, shortTime:null, weekendOff:false, team:'A', active:true});
   rebuildStaffMap();
   saveStaffData();
   renderStaffTable();
@@ -955,9 +958,10 @@ function generateSchedule(){
     }
     let restFromFlexible = [...flexA, ...flexB];
     if(dayNeeded>0) warnings.push(`${d}日(${dowLabel(d)})：日勤が${dayNeeded}名不足しています。`);
-    // 日勤リーダー確保（最低人数を超えてでも追加）
+    // 日勤リーダー・師長代行確保（最低人数を超えてでも追加）
     (function ensureDayLeaders(){
       if(isWeekendOrHoliday(d)){
+        // 土日祝日：リーダー1名のみ必要（師長代行の確保は不要）
         let haveLeader = dayList.some(s=>s.leader);
         if(!haveLeader){
           const idx = restFromFlexible.findIndex(s=>s.leader);
@@ -969,6 +973,7 @@ function generateSchedule(){
           }
         }
       } else {
+        // 平日：チームごとのリーダー確保
         ['A','B'].forEach(team=>{
           const haveTeamLeader = dayList.some(s=>s.leader && s.team===team);
           if(!haveTeamLeader){
@@ -981,6 +986,17 @@ function generateSchedule(){
             }
           }
         });
+        // 平日：師長または師長代行を日勤に1名確保する
+        const haveChief = dayList.some(s=>s.actingChief);
+        if(!haveChief){
+          const idx = restFromFlexible.findIndex(s=>s.actingChief);
+          if(idx>=0){
+            const cand = restFromFlexible.splice(idx,1)[0];
+            dayAssign[cand.id]={type:'day'}; dayList.push(cand);
+          } else {
+            warnings.push(`${d}日(${dowLabel(d)})：平日日勤に師長・師長代行が確保できませんでした。`);
+          }
+        }
       }
     })();
     // Phase8: 残り全員を休みとして確定
@@ -1006,9 +1022,10 @@ function generateSchedule(){
           const ldr = teamMembers.find(s=>s.leader);
           if(ldr) dayAssign[ldr.id].leader = true;
         }
-        // チームの日勤が1名のみの場合はリーダー不要（警告のみ）
-        // warnings.push(`...`) のコメントを外すと警告も出せる
       });
+      // 平日：師長代行の印付け（日勤に入っている師長代行可能者のうち1名）
+      const chiefPerson = dayList.find(s=>s.actingChief);
+      if(chiefPerson) dayAssign[chiefPerson.id].chief = true;
     }
     // Phase10: 状態更新
     STAFF.forEach(s=>{
@@ -1149,7 +1166,7 @@ function renderResultGrid(){
       const a = schedule[s.id][d];
       const opts = EDIT_OPTIONS.map(([v,l])=>`<option value="${v}" ${v===a.type?'selected':''}>${l}</option>`).join('');
       body += `<td class="${cellClass(a.type)}" id="cell-${s.id}-${d}">
-        <select onchange="manualEditCell(${s.id},${d},this.value)" style="background:transparent;border:none;color:inherit;font-weight:inherit;width:100%;text-align:center;">${opts}</select>${a.leader?'<span class="leader-star">★</span>':''}</td>`;
+        <select onchange="manualEditCell(${s.id},${d},this.value)" style="background:transparent;border:none;color:inherit;font-weight:inherit;width:100%;text-align:center;">${opts}</select>${a.leader?'<span class="leader-star">★</span>':''}${a.chief?'<span class="chief-mark">◆</span>':''}</td>`;
     }
     body += '</tr>';
   });
@@ -1158,7 +1175,7 @@ function renderResultGrid(){
 }
 function manualEditCell(staffId, day, newType){
   const cur = schedule[staffId][day];
-  schedule[staffId][day] = {type:newType, leader: cur ? cur.leader : false};
+  schedule[staffId][day] = {type:newType, leader: cur ? cur.leader : false, chief: cur ? cur.chief : false};
   const cell = document.getElementById(`cell-${staffId}-${day}`);
   if(cell){ cell.className = cellClass(newType); }
   renderSummary(lastGeneratedState);
@@ -1279,6 +1296,7 @@ function generateDefaultRulesHtml(){
   <ul>
     <li>夜勤メンバーが全員同一チームにならないよう調整する（4人夜勤でもA4:B0・B4:A0は不可）</li>
     <li>リーダーは必ず2名以上いるチームから選ぶ（夜勤・日勤ともに）</li>
+    <li>平日の日勤には師長または師長代行（②スタッフタブで「師長代行可否」にチェックした人）を必ず1名確保する。土日祝日は不要（リーダーのみ）</li>
   </ul>
   <p><strong>【人数配置（現在の設定値）】</strong></p>
   <ul>
@@ -1287,6 +1305,7 @@ function generateDefaultRulesHtml(){
     <li>日勤の必要人数：平日${weekdayDayMin}名以上、土日祝日${weekendDayMin}名以上（①基本設定タブで変更可）</li>
     <li>日勤のリーダー人数：平日はAチーム・Bチームそれぞれ1名以上（チームに2名以上いる場合のみ）、土日祝日はチーム問わず1名以上</li>
     <li>夜勤のリーダー：必ず1名配置（2名以上いるチームから優先して指名）</li>
+    <li>平日日勤の師長代行：②スタッフタブで「師長代行可否」をチェックした人を必ず1名確保。結果表では◆マークで表示</li>
   </ul>
   <p><strong>【個人の回数上限（固定）】</strong></p>
   <ul>
