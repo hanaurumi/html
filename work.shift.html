@@ -414,7 +414,7 @@ let ALL_STAFF = [
   {id:28,name:'愛宕菜摘', role:'スタッフ',   exp:'1st',     leader:false, night:true,    lateB:true,  shortTime:null, weekendOff:false, team:'B', active:false},
 ];
 function expLabel(e){ return e==='1st'?'1年目':e==='2nd'?'2年目':'－'; }
-function weekendNightEnabled(s){ return !!(staffOverrides[s.id] && staffOverrides[s.id].weekendNightEnabled); }
+function weekendNightEnabled(s){ return !!s.weekendNightUnlocked; }
 let STAFF_MAP = {};
 function rebuildStaffMap(){ STAFF_MAP = {}; ALL_STAFF.forEach(s=>{ STAFF_MAP[s.id]=s; }); }
 rebuildStaffMap();
@@ -632,8 +632,10 @@ function renderStaffTable(){
 function updateStaffField(staffId, field, value){
   const s = STAFF_MAP[staffId];
   if(!s) return;
-  if(field==='leader' || field==='lateB' || field==='weekendOff' || field==='active' || field==='actingChief'){
+  if(field==='leader' || field==='lateB' || field==='weekendOff' || field==='active' || field==='actingChief' || field==='weekendNightUnlocked'){
     s[field] = !!value;
+  } else if(field==='nenkyuExtra'){
+    s[field] = typeof value === 'number' ? value : (parseInt(value,10)||0);
   } else if(field==='night'){
     s.night = value==='true' ? true : value==='false' ? false : 'request';
   } else if(field==='shortTime'){
@@ -646,7 +648,7 @@ function updateStaffField(staffId, field, value){
 }
 function addNewStaff(){
   const id = nextStaffId();
-  ALL_STAFF.push({id, name:'新しいスタッフ', role:'スタッフ', exp:'general', leader:false, actingChief:false, night:true, lateB:true, shortTime:null, weekendOff:false, team:'A', active:true});
+  ALL_STAFF.push({id, name:'新しいスタッフ', role:'スタッフ', exp:'general', leader:false, actingChief:false, night:true, lateB:true, shortTime:null, weekendOff:false, weekendNightUnlocked:false, nenkyuExtra:0, team:'A', active:true});
   rebuildStaffMap();
   saveStaffData();
   renderStaffTable();
@@ -664,18 +666,14 @@ function deleteStaff(staffId){
   renderNightOnlySelect();
   renderRequestGrid();
 }
-function nenkyuExtra(s){ return (staffOverrides[s.id] && staffOverrides[s.id].nenkyuExtra) || 0; }
+function nenkyuExtra(s){ return s.nenkyuExtra || 0; }
 function setNenkyuExtra(staffId, value){
-  if(!staffOverrides[staffId]) staffOverrides[staffId] = {};
   let v = parseInt(value,10);
   if(isNaN(v) || v<0) v = 0;
-  staffOverrides[staffId].nenkyuExtra = v;
-  saveSettings();
+  updateStaffField(staffId, 'nenkyuExtra', v);
 }
 function toggleWeekendNight(staffId, checked){
-  if(!staffOverrides[staffId]) staffOverrides[staffId] = {};
-  staffOverrides[staffId].weekendNightEnabled = checked;
-  saveSettings();
+  updateStaffField(staffId, 'weekendNightUnlocked', checked);
 }
 function saveStaffOverrides(){
   saveSettings();
