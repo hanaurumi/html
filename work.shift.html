@@ -734,6 +734,7 @@ function generateSchedule(){
   STAFF.forEach(s=>{
     state[s.id] = {nightCount:0, lateCount:0, consec:0, prevType:null, workCount:0,
                    kouRemaining:kouQuota, shukuRemaining:shukuQuota, otherCount:0,
+                   nightStreak:0, forcedRestDaysLeft:0,
                    virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota) : avgTotalRestPerRegular};
   });
   const teamOtherCount = {A:0, B:0};
@@ -830,9 +831,13 @@ function generateSchedule(){
       const r = reqOf(s,d);
       if(st.prevType==='night'){
         // 夜勤翌日は必ず明け（Phase1で設定）
+      } else if(st.forcedRestDaysLeft>0){
+        dayAssign[s.id] = {type:'restPendingSpecial'};
+        st.forcedRestDaysLeft--;
       } else if(r==='off' || st.nightCount>=9){
         dayAssign[s.id] = {type:'restPendingSpecial'};
       } else {
+        // 夜→明→夜→明→休→休 のサイクル（nightStreak で夜勤回数を管理）
         dayAssign[s.id] = {type:'night', leader:false};
       }
     }
@@ -1024,11 +1029,20 @@ function generateSchedule(){
       schedule[s.id][d] = a;
       if(a.type==='night'){
         st.nightCount++; st.consec++; st.workCount++; st.prevType='night'; teamNightCount[s.team]++;
+        if(s.id===nightOnlyId){
+          st.nightStreak++;
+          if(st.nightStreak>=2){ st.forcedRestDaysLeft=2; st.nightStreak=0; }
+        }
       }
       else if(a.type==='late'){ st.lateCount++; st.consec++; st.workCount++; st.prevType='late'; teamLateCount[s.team]++; }
       else if(a.type==='day'){ st.consec++; st.workCount++; st.prevType='day'; }
+      else if(a.type==='rest'){
+        // 明けは勤務扱い（consec継続・virtualRemainingは消費しない）
+        st.consec++; st.workCount++; st.prevType='rest';
+      }
       else {
         st.consec=0; st.prevType=a.type; st.virtualRemaining--;
+        if(s.id===nightOnlyId){ st.nightStreak=0; }
       }
     });
   }
@@ -1274,7 +1288,8 @@ function generateDefaultRulesHtml(){
   <p><strong>【勤務のつながり（固定ルール）】</strong></p>
   <ul>
     <li>夜勤の翌日は必ず明け（夜勤専従・通常勤務ともに同様、夜夜は不可）</li>
-    <li>明けは公休と同様の休暇扱いとして集計に計上</li>
+    <li>明けは勤務扱い。勤務の流れ：夜勤→明け→休み、または夜勤→明け→夜勤→明け→休み→休み</li>
+    <li>休みは公休と同様の扱い（公休・祝・年休として集計）</li>
     <li>遅Bの翌日は夜勤または休みのみ</li>
     <li>連続勤務は最大5日まで</li>
   </ul>
