@@ -746,7 +746,7 @@ function generateSchedule(){
     if(s.night==='request' && reqOf(s,d)!=='night') return false;
     if(s.weekendOff && isWeekendOrHoliday(d)) return false;
     if(s.exp==='1st' && isWeekendOrHoliday(d) && !weekendNightEnabled(s)) return false;
-    if(isPlannedRestDay(s,d) && reqOf(s,d)!=='night') return false;
+    if(isPlannedRestDay(s,d)) return false;
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.consec>=5) return false;
@@ -758,7 +758,7 @@ function generateSchedule(){
   function eligibleLate(s,d){
     if(!s.lateB) return false;
     if(s.weekendOff && isWeekendOrHoliday(d)) return false;
-    if(isPlannedRestDay(s,d) && reqOf(s,d)!=='late') return false;
+    if(isPlannedRestDay(s,d)) return false;
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.prevType==='late') return false;
@@ -770,7 +770,7 @@ function generateSchedule(){
   }
   function eligibleDay(s,d){
     if(s.weekendOff && isWeekendOrHoliday(d)) return false;
-    if(isPlannedRestDay(s,d) && reqOf(s,d)!=='day') return false;
+    if(isPlannedRestDay(s,d)) return false;
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.prevType==='late') return false;
