@@ -775,6 +775,7 @@ function generateSchedule(){
     if(isPlannedRestDay(s,d)) return false;
     const st = state[s.id];
     if(st.prevType==='night') return false;
+    if(st.prevType==='rest') return false;  // 明け翌日は公休
     if(st.consec>=5) return false;
     if(st.nightCount>=nightCapEffective(s)) return false;
     const r = reqOf(s,d);
@@ -788,6 +789,7 @@ function generateSchedule(){
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.prevType==='late') return false;
+    if(st.prevType==='rest') return false;  // 明け翌日は公休
     if(st.consec>=5) return false;
     if(st.lateCount>=LATE_CAP) return false;
     const r = reqOf(s,d);
@@ -800,6 +802,7 @@ function generateSchedule(){
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.prevType==='late') return false;
+    if(st.prevType==='rest') return false;  // 明け翌日は公休
     if(st.consec>=5) return false;
     const r = reqOf(s,d);
     if(r==='off'||r==='night'||r==='late') return false;
@@ -952,7 +955,7 @@ function generateSchedule(){
     }
     // Phase5: 残りの人を分類
     let pool = STAFF.filter(s=>!dayAssign[s.id]);
-    let forcedRest = pool.filter(s=> state[s.id].consec>=5 || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d));
+    let forcedRest = pool.filter(s=> state[s.id].consec>=5 || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d) || state[s.id].prevType==='rest');
     let remaining = pool.filter(s=> !forcedRest.includes(s));
     let lockedWorkers = remaining.filter(s=> s.weekendOff && reqOf(s,d)!=='off');
     lockedWorkers.forEach(s=>{ dayAssign[s.id] = {type:'day'}; });
@@ -1337,7 +1340,8 @@ function generateDefaultRulesHtml(){
   <p><strong>【勤務のつながり（固定ルール）】</strong></p>
   <ul>
     <li>夜勤の翌日は必ず明け（夜勤専従・通常勤務ともに同様、夜夜は不可）</li>
-    <li>明けは勤務扱い。勤務の流れ：夜勤→明け→休み、または夜勤→明け→夜勤→明け→休み→休み</li>
+    <li>明けは勤務扱い。明けの翌日は必ず公休（夜勤専従を除く）</li>
+    <li>勤務の流れ：夜勤→明け→公休、または夜勤→明け→夜勤→明け→公休→公休</li>
     <li>休みは公休と同様の扱い（公休・祝・年休として集計）</li>
     <li>遅Bの翌日は夜勤または休みのみ</li>
     <li>連続勤務は最大5日まで</li>
