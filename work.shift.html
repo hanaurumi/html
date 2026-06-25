@@ -734,7 +734,6 @@ function generateSchedule(){
   STAFF.forEach(s=>{
     state[s.id] = {nightCount:0, lateCount:0, consec:0, prevType:null, workCount:0,
                    kouRemaining:kouQuota, shukuRemaining:shukuQuota, otherCount:0,
-                   nightStreak:0, forcedRestDaysLeft:0,
                    virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota) : avgTotalRestPerRegular};
   });
   const teamOtherCount = {A:0, B:0};
@@ -828,23 +827,17 @@ function generateSchedule(){
     if(nightOnlyId && STAFF_MAP[nightOnlyId]){
       const s = STAFF_MAP[nightOnlyId];
       const st = state[s.id];
-      if(st.forcedRestDaysLeft>0){
+      const r = reqOf(s,d);
+      if(st.prevType==='night'){
+        // 夜勤翌日は必ず明け（Phase1で設定）
+      } else if(r==='off' || st.nightCount>=9){
         dayAssign[s.id] = {type:'restPendingSpecial'};
-        st.forcedRestDaysLeft--;
       } else {
-        const r = reqOf(s,d);
-        if(r==='off'){
-          dayAssign[s.id] = {type:'restPendingSpecial'};
-        } else if(st.nightCount<9 && st.nightStreak<2){
-          dayAssign[s.id] = {type:'night', leader:false};
-        } else {
-          dayAssign[s.id] = {type:'restPendingSpecial'};
-        }
+        dayAssign[s.id] = {type:'night', leader:false};
       }
     }
-    // Phase1: 明け（夜勤翌日）
+    // Phase1: 明け（夜勤翌日）― 夜勤専従を含む全スタッフ
     STAFF.forEach(s=>{
-      if(s.id===nightOnlyId) return;
       if(state[s.id].prevType==='night') dayAssign[s.id] = {type:'rest'};
     });
     // Phase2: 勤務希望の反映
@@ -1031,16 +1024,11 @@ function generateSchedule(){
       schedule[s.id][d] = a;
       if(a.type==='night'){
         st.nightCount++; st.consec++; st.workCount++; st.prevType='night'; teamNightCount[s.team]++;
-        if(s.id===nightOnlyId){
-          st.nightStreak++;
-          if(st.nightStreak>=2){ st.forcedRestDaysLeft = 2; }
-        }
       }
       else if(a.type==='late'){ st.lateCount++; st.consec++; st.workCount++; st.prevType='late'; teamLateCount[s.team]++; }
       else if(a.type==='day'){ st.consec++; st.workCount++; st.prevType='day'; }
       else {
         st.consec=0; st.prevType=a.type; st.virtualRemaining--;
-        if(s.id===nightOnlyId){ st.nightStreak=0; }
       }
     });
   }
@@ -1285,7 +1273,8 @@ function generateDefaultRulesHtml(){
   return `
   <p><strong>【勤務のつながり（固定ルール）】</strong></p>
   <ul>
-    <li>夜勤の翌日は必ず休み（明け）</li>
+    <li>夜勤の翌日は必ず明け（夜勤専従・通常勤務ともに同様、夜夜は不可）</li>
+    <li>明けは公休と同様の休暇扱いとして集計に計上</li>
     <li>遅Bの翌日は夜勤または休みのみ</li>
     <li>連続勤務は最大5日まで</li>
   </ul>
