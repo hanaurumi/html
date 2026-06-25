@@ -199,7 +199,7 @@
     <div class="assumption">
       <strong>このアプリの前提（未確認・推定部分）：</strong>
       <ul style="margin:6px 0 0;padding-left:18px;">
-        <li>副看護師長は通常スタッフとして夜勤・遅Bのカウント対象に含めています。</li>
+        <li>副看護師長の夜勤は月4回まで（通常スタッフは月5回まで、1年目は月2回まで）。</li>
         <li>時短勤務（②スタッフタブで「土日祝日休み」が設定されているスタッフ）は遅Bには入らない前提です。</li>
         <li>「公休」「祝」は月間の枚数（権利）として全員に同数を割り振ります。それを使い切った後にさらに休みが必要な場合は「年休」として扱います。</li>
         <li>時短勤務のスタッフは、実際の土日は公休、祝日当日は祝として記録します（「土日祝日休み」が設定されている人は土日祝日は必ず休みのため）。</li>
@@ -713,7 +713,7 @@ function clearRequests(){
   saveRequestsDebounced();
 }
 /* ===================== 生成アルゴリズム ===================== */
-function nightCap(s){ return s.exp==='1st' ? 2 : 5; }
+function nightCap(s){ return s.exp==='1st' ? 2 : s.role==='副看護師長' ? 4 : 5; }
 const LATE_CAP = 3;
 function isJunior(s){ return s.exp==='1st'||s.exp==='2nd'; }
 function generateSchedule(){
@@ -1310,7 +1310,7 @@ function generateDefaultRulesHtml(){
   </ul>
   <p><strong>【個人の回数上限（固定）】</strong></p>
   <ul>
-    <li>夜勤：月5回まで（1年目は月2回まで）</li>
+    <li>夜勤：月5回まで（副看護師長は月4回まで、1年目は月2回まで）</li>
     <li>遅B：月3回まで</li>
   </ul>
   <p><strong>【夜勤内の経験者バランス（固定）】</strong></p>
