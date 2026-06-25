@@ -423,6 +423,7 @@ function nextStaffId(){ return ALL_STAFF.reduce((max,s)=>Math.max(max,s.id),0) +
 /* ===================== 永続化（localStorage） ===================== */
 const SETTINGS_KEY = 'ward-app-settings';
 const STAFF_KEY = 'ward-app-staff';
+const NIGHT_HISTORY_KEY = 'ward-app-night-history';
 const lsGet = (key) => { try{ return localStorage.getItem(key); }catch(e){ return null; } };
 const lsSet = (key, val) => { try{ localStorage.setItem(key, val); }catch(e){} };
 const lsDel = (key) => { try{ localStorage.removeItem(key); }catch(e){} };
@@ -714,6 +715,31 @@ function clearRequests(){
 }
 /* ===================== 生成アルゴリズム ===================== */
 function nightCap(s){ return s.exp==='1st' ? 2 : s.role==='副看護師長' ? 4 : 5; }
+/* 夜勤履歴：{staffId: [{year,month,count}, ...]} */
+function loadNightHistory(){ try{ return JSON.parse(lsGet(NIGHT_HISTORY_KEY)||'{}'); }catch(e){ return {}; } }
+function saveNightHistory(nightCounts){
+  const hist = loadNightHistory();
+  Object.entries(nightCounts).forEach(([id, count])=>{
+    if(!hist[id]) hist[id] = [];
+    hist[id] = hist[id].filter(r=> !(r.year===currentYear && r.month===currentMonth));
+    hist[id].push({year:currentYear, month:currentMonth, count});
+    hist[id] = hist[id].slice(-6);
+  });
+  lsSet(NIGHT_HISTORY_KEY, JSON.stringify(hist));
+}
+function nightCapEffective(s){
+  const base = nightCap(s);
+  if(base < 5) return base;
+  const hist = loadNightHistory();
+  const records = (hist[s.id] || []).sort((a,b)=> a.year*100+a.month - (b.year*100+b.month));
+  const prevMonth = (y, m) => m===1 ? {y:y-1,m:12} : {y, m:m-1};
+  const p1 = prevMonth(currentYear, currentMonth);
+  const p2 = prevMonth(p1.y, p1.m);
+  const c1 = (records.find(r=>r.year===p1.y&&r.month===p1.m)||{count:0}).count;
+  const c2 = (records.find(r=>r.year===p2.y&&r.month===p2.m)||{count:0}).count;
+  if(c1>=5 && c2>=5) return 4;
+  return base;
+}
 const LATE_CAP = 3;
 function isJunior(s){ return s.exp==='1st'||s.exp==='2nd'; }
 function generateSchedule(){
@@ -750,7 +776,7 @@ function generateSchedule(){
     const st = state[s.id];
     if(st.prevType==='night') return false;
     if(st.consec>=5) return false;
-    if(st.nightCount>=nightCap(s)) return false;
+    if(st.nightCount>=nightCapEffective(s)) return false;
     const r = reqOf(s,d);
     if(r==='off'||r==='day'||r==='late') return false;
     return true;
@@ -1210,6 +1236,29 @@ function renderSummary(state){
 function runGeneration(){
   const state = generateSchedule();
   lastGeneratedState = state;
+  // 夜勤回数履歴を保存（3ヶ月連続ルール用）
+  const DAYS = daysInMonth();
+  const nightCounts = {};
+  getActiveStaff().forEach(s=>{
+    let n=0;
+    for(let d=1;d<=DAYS;d++) if(schedule[s.id][d]?.type==='night') n++;
+    nightCounts[s.id] = n;
+  });
+  saveNightHistory(nightCounts);
+  // 3ヶ月連続5回警告チェック
+  const hist = loadNightHistory();
+  getActiveStaff().forEach(s=>{
+    if(nightCap(s)<5) return;
+    const records = (hist[s.id]||[]).sort((a,b)=> a.year*100+a.month-(b.year*100+b.month));
+    const prevMonth = (y,m)=> m===1?{y:y-1,m:12}:{y,m:m-1};
+    const p1=prevMonth(currentYear,currentMonth);
+    const p2=prevMonth(p1.y,p1.m);
+    const c0=nightCounts[s.id]||0;
+    const c1=(records.find(r=>r.year===p1.y&&r.month===p1.m)||{count:0}).count;
+    const c2=(records.find(r=>r.year===p2.y&&r.month===p2.m)||{count:0}).count;
+    if(c0>=5 && c1>=5 && c2>=5) warnings.push(`⚠️ ${s.name}：3ヶ月連続で夜勤5回となっています（労働法上の上限を超える可能性があります）。`);
+    else if(c0>=5 && c1>=5) warnings.push(`📋 ${s.name}：夜勤5回が2ヶ月連続です。来月は5回にできません（月4回以下にしてください）。`);
+  });
   renderResultGrid();
   renderWarnings();
   renderSummary(state);
