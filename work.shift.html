@@ -436,12 +436,8 @@ async function loadStaffData(){
   }catch(e){}
   rebuildStaffMap();
 }
-let staffSaveTimer=null;
 function saveStaffData(){
-  clearTimeout(staffSaveTimer);
-  staffSaveTimer = setTimeout(()=>{
-    try{ lsSet(STAFF_KEY, JSON.stringify(ALL_STAFF)); }catch(e){}
-  }, 300);
+  try{ lsSet(STAFF_KEY, JSON.stringify(ALL_STAFF)); }catch(e){}
 }
 function requestsKey(){ return `requests-${currentYear}${pad(currentMonth)}`; }
 async function loadSettings(){
@@ -613,14 +609,14 @@ function renderStaffTable(){
     html += `<tr>
       <td><input type="checkbox" ${activeChecked} title="今月の勤務表に含める" onchange="updateStaffField(${s.id},'active',this.checked)"></td>
       <td><select onchange="updateStaffField(${s.id},'team',this.value)">${teamOpts}</select></td>
-      <td class="name"><input type="text" value="${s.name}" style="width:90px;" onchange="updateStaffField(${s.id},'name',this.value)"></td>
-      <td><input type="text" value="${s.role}" style="width:80px;" onchange="updateStaffField(${s.id},'role',this.value)"></td>
+      <td class="name"><input type="text" value="${s.name}" style="width:90px;" oninput="updateStaffField(${s.id},'name',this.value)"></td>
+      <td><input type="text" value="${s.role}" style="width:80px;" oninput="updateStaffField(${s.id},'role',this.value)"></td>
       <td><select onchange="updateStaffField(${s.id},'exp',this.value)">${expOpts}</select></td>
       <td><input type="checkbox" ${s.leader?'checked':''} onchange="updateStaffField(${s.id},'leader',this.checked)"></td>
       <td><input type="checkbox" ${s.actingChief?'checked':''} title="平日日勤に師長または師長代行として入れる" onchange="updateStaffField(${s.id},'actingChief',this.checked)"></td>
       <td><select onchange="updateStaffField(${s.id},'night',this.value)">${nightOpts}</select></td>
       <td><input type="checkbox" ${s.lateB?'checked':''} onchange="updateStaffField(${s.id},'lateB',this.checked)"></td>
-      <td><input type="text" value="${s.shortTime||''}" placeholder="例：①" style="width:50px;" onchange="updateStaffField(${s.id},'shortTime',this.value)"></td>
+      <td><input type="text" value="${s.shortTime||''}" placeholder="例：①" style="width:50px;" oninput="updateStaffField(${s.id},'shortTime',this.value)"></td>
       <td><input type="checkbox" ${s.weekendOff?'checked':''} onchange="updateStaffField(${s.id},'weekendOff',this.checked)"></td>
       <td class="toggle-cell">${showWeekendToggle ? `<input type="checkbox" ${weekendChecked} onchange="toggleWeekendNight(${s.id}, this.checked)">` : '－'}</td>
       <td>${s.weekendOff ? '－' : `<input type="number" min="0" max="31" value="${extra}" style="width:55px;" onchange="setNenkyuExtra(${s.id}, this.value)">`}</td>
