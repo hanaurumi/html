@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>5西勤務表作成</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#F7F8FA; --surface:#FFFFFF; --text:#1E2A38; --muted:#6B7785;
@@ -75,6 +77,15 @@
   .calmini select{width:100%;font-size:10.5px;margin-bottom:3px;}
   .calmini .holiday-tag{color:#B23B3B;font-size:10px;font-weight:700;}
   .toggle-cell{display:flex;align-items:center;gap:6px;justify-content:center;}
+  /* Excel/Drive モーダル */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;}
+  .modal-overlay.active{display:flex;}
+  .modal-box{background:#fff;border-radius:12px;padding:28px 32px;max-width:480px;width:92%;box-shadow:0 8px 32px rgba(0,0,0,.22);}
+  .modal-box h3{margin:0 0 12px;font-size:16px;color:var(--accent);}
+  .modal-box p{margin:0 0 18px;font-size:13px;color:var(--muted);}
+  .modal-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+  .modal-actions .btn{flex:1;min-width:130px;}
+  #driveStatus{font-size:12px;color:var(--muted);margin-top:8px;}
 </style>
 </head>
 <body>
@@ -136,6 +147,17 @@
       </div>
       <div class="actions">
         <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
+      </div>
+    </section>
+    <section>
+      <h2>Google Drive設定</h2>
+      <p class="note">勤務表をExcelとしてGoogle Driveに保存するには、Google Cloud ConsoleでOAuth 2.0クライアントIDを発行し、下に入力してください。<br>（発行手順：Google Cloud Console → APIとサービス → 認証情報 → OAuth 2.0クライアントID → ウェブアプリケーション → 承認済みJavaScript生成元にこのページのURLを追加）</p>
+      <div class="field-row">
+        <label>Google OAuth Client ID</label>
+        <input type="text" id="gdriveClientIdInput" style="flex:1;font-size:12px;" placeholder="xxxxxxxx.apps.googleusercontent.com">
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="saveGDriveClientId()">Client IDを保存</button>
       </div>
     </section>
     <section>
@@ -213,6 +235,9 @@
     </div>
     <section id="resultSection" style="display:none;">
       <h2>生成結果</h2>
+      <div class="actions" style="margin-bottom:8px;">
+        <button class="btn" onclick="openExcelModal()">📊 Excelに出力する</button>
+      </div>
       <div class="legend">
         <span><span class="swatch" style="background:var(--night)"></span>夜勤</span>
         <span><span class="swatch" style="background:var(--late)"></span>遅B</span>
@@ -431,6 +456,7 @@ function nextStaffId(){ return ALL_STAFF.reduce((max,s)=>Math.max(max,s.id),0) +
 const SETTINGS_KEY = 'ward-app-settings';
 const STAFF_KEY = 'ward-app-staff';
 const NIGHT_HISTORY_KEY = 'ward-app-night-history';
+const GDRIVE_CLIENT_ID_KEY = 'ward-app-gdrive-client-id';
 const lsGet = (key) => { try{ return localStorage.getItem(key); }catch(e){ return null; } };
 const lsSet = (key, val) => { try{ localStorage.setItem(key, val); }catch(e){} };
 const lsDel = (key) => { try{ localStorage.removeItem(key); }catch(e){} };
@@ -1447,7 +1473,163 @@ function generateDefaultRulesHtml(){
   renderRequestGrid();
   renderNightOnlySelect();
   renderRules();
+  // Google Drive Client ID を復元
+  const savedClientId = lsGet(GDRIVE_CLIENT_ID_KEY);
+  if(savedClientId) document.getElementById('gdriveClientIdInput').value = savedClientId;
 })();
+function saveGDriveClientId(){
+  const val = document.getElementById('gdriveClientIdInput').value.trim();
+  if(val) lsSet(GDRIVE_CLIENT_ID_KEY, val);
+  else lsDel(GDRIVE_CLIENT_ID_KEY);
+  _gapiToken = null; // トークンをリセット
+  alert(val ? 'Client IDを保存しました。' : 'Client IDを削除しました。');
+}
+</script>
+
+<!-- Excel出力・Google Drive保存 モーダル -->
+<div class="modal-overlay" id="excelModal">
+  <div class="modal-box">
+    <h3>📊 勤務表をExcelに出力</h3>
+    <p id="excelModalMsg">Excelファイルを生成しました。Google Driveに保存するか、キャンセル（破棄）を選択してください。</p>
+    <div id="driveStatus"></div>
+    <div class="modal-actions">
+      <button class="btn" id="driveSaveBtn" onclick="saveExcelToDrive()">💾 Google Driveに保存</button>
+      <button class="btn secondary" onclick="closeExcelModal()">🗑️ キャンセル（破棄）</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ========== Excel出力 & Google Drive保存 ========== */
+let _excelBlob = null;
+let _excelFilename = '';
+let _gapiToken = null;
+
+function getGDriveClientId(){
+  return (lsGet(GDRIVE_CLIENT_ID_KEY)||'').trim();
+}
+
+function buildExcelData(){
+  const dim = daysInMonth();
+  const staff = getActiveStaff();
+  // ヘッダー行
+  const header = ['氏名','チーム'].concat(
+    Array.from({length:dim},(_,i)=>`${i+1}(${DOW_LABEL[new Date(currentYear,currentMonth-1,i+1).getDay()]})`)
+  ).concat(['夜勤','遅B','遅','日勤','明け','公休','祝','年休','特']);
+  const rows = [header];
+  staff.forEach(s=>{
+    let night=0,late=0,late2=0,day=0,rest=0,kou=0,shuku=0,other=0,toku=0;
+    const cells = [s.name, s.team];
+    for(let d=1;d<=dim;d++){
+      const a = schedule[s.id][d];
+      const lbl = cellLabel(a.type) + (a.leader?'★':'') + (a.chief?'◆':'');
+      cells.push(lbl);
+      const t=a.type;
+      if(t==='night') night++; else if(t==='late') late++; else if(t==='late2') late2++;
+      else if(t==='day') day++; else if(t==='rest') rest++; else if(t==='公') kou++;
+      else if(t==='祝') shuku++; else if(t==='年休') other++; else if(t==='特') toku++;
+    }
+    cells.push(night,late,late2,day,rest,kou,shuku,other,toku);
+    rows.push(cells);
+  });
+  return rows;
+}
+
+function generateExcelBlob(){
+  const rows = buildExcelData();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // 列幅設定
+  ws['!cols'] = [{wch:10},{wch:6}].concat(Array(daysInMonth()).fill({wch:5})).concat(Array(9).fill({wch:5}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `${currentYear}年${currentMonth}月`);
+  const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  return new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+function openExcelModal(){
+  if(!schedule || Object.keys(schedule).length===0){
+    alert('先に勤務表を生成してください。');
+    return;
+  }
+  _excelFilename = `勤務表_${currentYear}年${currentMonth}月.xlsx`;
+  _excelBlob = generateExcelBlob();
+  document.getElementById('excelModalMsg').textContent =
+    `「${_excelFilename}」を生成しました。Google Driveに保存するか、キャンセルを選択してください。`;
+  document.getElementById('driveStatus').textContent = '';
+  const clientId = getGDriveClientId();
+  const btn = document.getElementById('driveSaveBtn');
+  if(!clientId){
+    btn.disabled = true;
+    document.getElementById('driveStatus').innerHTML =
+      '⚠️ Google Drive保存にはClient IDが必要です。①設定タブの「Google Drive設定」で入力してください。';
+  } else {
+    btn.disabled = false;
+  }
+  document.getElementById('excelModal').classList.add('active');
+}
+
+function closeExcelModal(){
+  document.getElementById('excelModal').classList.remove('active');
+  _excelBlob = null;
+}
+
+async function saveExcelToDrive(){
+  const clientId = getGDriveClientId();
+  if(!clientId){ alert('Client IDが設定されていません。'); return; }
+  const statusEl = document.getElementById('driveStatus');
+  const btn = document.getElementById('driveSaveBtn');
+  btn.disabled = true;
+  statusEl.textContent = '🔐 Googleアカウントにサインイン中...';
+  try {
+    const token = await getGoogleToken(clientId);
+    statusEl.textContent = '📤 Google Driveにアップロード中...';
+    await uploadToDrive(token, _excelBlob, _excelFilename);
+    statusEl.innerHTML = `✅ 「${_excelFilename}」をGoogle Driveに保存しました。`;
+    btn.disabled = false;
+    setTimeout(()=> closeExcelModal(), 2000);
+  } catch(e) {
+    statusEl.textContent = `❌ エラー: ${e.message||e}`;
+    btn.disabled = false;
+  }
+}
+
+function getGoogleToken(clientId){
+  return new Promise((resolve, reject)=>{
+    if(_gapiToken && _gapiToken.expiry > Date.now()){
+      return resolve(_gapiToken.access_token);
+    }
+    if(typeof google === 'undefined'){
+      return reject(new Error('Google Identity Servicesの読み込みに失敗しました。ネットワークを確認してください。'));
+    }
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp)=>{
+        if(resp.error){ return reject(new Error(resp.error)); }
+        _gapiToken = {access_token: resp.access_token, expiry: Date.now() + (resp.expires_in||3600)*1000};
+        resolve(resp.access_token);
+      }
+    });
+    client.requestAccessToken();
+  });
+}
+
+async function uploadToDrive(token, blob, filename){
+  const metadata = {name: filename, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)],{type:'application/json'}));
+  form.append('file', blob);
+  const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+token},
+    body: form
+  });
+  if(!resp.ok){
+    const err = await resp.json().catch(()=>({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
 </script>
 </body>
 </html>
