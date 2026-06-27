@@ -723,11 +723,12 @@ function applyMonthChange(){
 function renderStaffTable(){
   const t = document.getElementById('staffTable');
   let prevTeam = null;
-  let html = '<tr><th>有効</th><th>チーム</th><th>氏名</th><th>役職</th><th>看護師<br>経験</th><th>部署<br>経験(年)</th><th>リーダー</th><th>師長代行<br>可否</th><th>夜勤</th><th>遅B</th><th>時短ラベル</th><th>土日祝日休み</th><th>土日夜勤解禁<br>(1年目のみ)</th><th>年休追加<br>(個別・回/月)</th><th>削除</th></tr>';
+  let rowNum = 0;
+  let html = '<tr><th>#</th><th>有効</th><th>チーム</th><th>氏名</th><th>役職</th><th>看護師<br>経験</th><th>部署<br>経験(年)</th><th>リーダー</th><th>師長代行<br>可否</th><th>夜勤</th><th>遅B</th><th>時短ラベル</th><th>土日祝日休み</th><th>土日夜勤解禁<br>(1年目のみ)</th><th>年休追加<br>(個別・回/月)</th><th>削除</th></tr>';
   ALL_STAFF.forEach(s=>{
     const head = isHeadNurse(s);
     if(s.team !== prevTeam){
-      html += `<tr><td colspan="15" style="background:#e8eef5;font-weight:bold;padding:4px 8px;font-size:12px;">チーム ${s.team}</td></tr>`;
+      html += `<tr><td colspan="16" style="background:#e8eef5;font-weight:bold;padding:4px 8px;font-size:12px;">チーム ${s.team}</td></tr>`;
       prevTeam = s.team;
     }
     const showWeekendToggle = s.exp==='1st';
@@ -747,7 +748,9 @@ function renderStaffTable(){
     const chiefCell = head
       ? `<span style="color:#888;font-size:11px;">管理者</span>`
       : `<input type="checkbox" ${s.actingChief?'checked':''} title="平日日勤に師長代行として入れる" onchange="updateStaffField(${s.id},'actingChief',this.checked)">`;
+    rowNum++;
     html += `<tr style="${head?'background:#fff8e1;':''}">
+      <td style="text-align:center;color:#999;font-size:12px;">${rowNum}</td>
       <td><input type="checkbox" ${activeChecked} title="今月の勤務表に含める" onchange="updateStaffField(${s.id},'active',this.checked)"></td>
       <td><select onchange="updateStaffField(${s.id},'team',this.value);sortAndRerenderStaff()">${teamOpts}</select></td>
       <td class="name"><input type="text" value="${s.name}" style="width:90px;" oninput="updateStaffField(${s.id},'name',this.value)"></td>
