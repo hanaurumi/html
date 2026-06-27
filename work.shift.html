@@ -80,12 +80,20 @@
   /* Excel/Drive モーダル */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;}
   .modal-overlay.active{display:flex;}
-  .modal-box{background:#fff;border-radius:12px;padding:28px 32px;max-width:480px;width:92%;box-shadow:0 8px 32px rgba(0,0,0,.22);}
-  .modal-box h3{margin:0 0 12px;font-size:16px;color:var(--accent);}
-  .modal-box p{margin:0 0 18px;font-size:13px;color:var(--muted);}
-  .modal-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+  .modal-box{background:#fff;border-radius:12px;padding:24px 28px;max-width:96vw;width:1100px;box-shadow:0 8px 32px rgba(0,0,0,.22);display:flex;flex-direction:column;max-height:90vh;}
+  .modal-box h3{margin:0 0 8px;font-size:16px;color:var(--accent);flex-shrink:0;}
+  .modal-box>.modal-note{margin:0 0 10px;font-size:12.5px;color:var(--muted);flex-shrink:0;}
+  .modal-preview{overflow:auto;flex:1;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+  .modal-preview table{border-collapse:collapse;font-size:11px;white-space:nowrap;}
+  .modal-preview th{background:var(--accent-light);color:var(--accent);border:1px solid var(--border);padding:3px 6px;position:sticky;top:0;z-index:2;}
+  .modal-preview td{border:1px solid var(--border);padding:2px 5px;text-align:center;}
+  .modal-preview td.pname{text-align:left;font-weight:600;position:sticky;left:0;background:#fff;z-index:1;}
+  .modal-preview td.pteam{position:sticky;left:60px;background:#fff;z-index:1;}
+  .modal-preview tr:nth-child(even) td{background:#f7f8fa;}
+  .modal-preview tr:nth-child(even) td.pname,.modal-preview tr:nth-child(even) td.pteam{background:#f7f8fa;}
+  .modal-actions{display:flex;gap:10px;flex-wrap:wrap;flex-shrink:0;}
   .modal-actions .btn{flex:1;min-width:130px;}
-  #driveStatus{font-size:12px;color:var(--muted);margin-top:8px;}
+  #driveStatus{font-size:12px;color:var(--muted);margin-top:6px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -1489,12 +1497,13 @@ function saveGDriveClientId(){
 <!-- Excel出力・Google Drive保存 モーダル -->
 <div class="modal-overlay" id="excelModal">
   <div class="modal-box">
-    <h3>📊 勤務表をExcelに出力</h3>
-    <p id="excelModalMsg">Excelファイルを生成しました。Google Driveに保存するか、キャンセル（破棄）を選択してください。</p>
+    <h3>📊 勤務表プレビュー</h3>
+    <p class="modal-note" id="excelModalMsg"></p>
+    <div class="modal-preview" id="excelPreview"></div>
     <div id="driveStatus"></div>
     <div class="modal-actions">
       <button class="btn" id="driveSaveBtn" onclick="saveExcelToDrive()">💾 Google Driveに保存</button>
-      <button class="btn secondary" onclick="closeExcelModal()">🗑️ キャンセル（破棄）</button>
+      <button class="btn secondary" onclick="closeExcelModal()">✕ 閉じる</button>
     </div>
   </div>
 </div>
@@ -1546,6 +1555,40 @@ function generateExcelBlob(){
   return new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 
+function buildPreviewHtml(){
+  const dim = daysInMonth();
+  const staff = getActiveStaff();
+  const TYPE_COLOR = {
+    night:'#2C3E50',late:'#B7791F',late2:'#7B6AF0',day:'#EAF4F4',
+    rest:'#E3E7EA','公':'#F0F0F0','祝':'#FBE3E3','年休':'#E8E4F5','特':'#D6EAF8'
+  };
+  const TYPE_FG = {night:'#fff',late:'#fff',late2:'#fff'};
+  let th = '<tr><th>氏名</th><th>チーム</th>';
+  for(let d=1;d<=dim;d++){
+    const we=isWeekendOrHoliday(d);
+    th += `<th style="${we?'background:#FBE3E3;':''}">${d}<br>${dowLabel(d)}</th>`;
+  }
+  th += '<th>夜</th><th>遅B</th><th>遅</th><th>日</th><th>明</th><th>公</th><th>祝</th><th>年休</th><th>特</th></tr>';
+  let rows = '';
+  staff.forEach(s=>{
+    let night=0,late=0,late2=0,day=0,rest=0,kou=0,shuku=0,other=0,toku=0;
+    let cells = '';
+    for(let d=1;d<=dim;d++){
+      const a=schedule[s.id][d];
+      const bg=TYPE_COLOR[a.type]||'';
+      const fg=TYPE_FG[a.type]||'';
+      const lbl=cellLabel(a.type)+(a.leader?'★':'')+(a.chief?'◆':'');
+      cells += `<td style="${bg?`background:${bg};`:''}${fg?`color:${fg};`:''}">${lbl}</td>`;
+      const t=a.type;
+      if(t==='night') night++; else if(t==='late') late++; else if(t==='late2') late2++;
+      else if(t==='day') day++; else if(t==='rest') rest++; else if(t==='公') kou++;
+      else if(t==='祝') shuku++; else if(t==='年休') other++; else if(t==='特') toku++;
+    }
+    rows += `<tr><td class="pname">${s.name}</td><td class="pteam">${s.team}</td>${cells}<td>${night}</td><td>${late}</td><td>${late2||''}</td><td>${day}</td><td>${rest}</td><td>${kou}</td><td>${shuku}</td><td>${other||''}</td><td>${toku||''}</td></tr>`;
+  });
+  return `<table><thead>${th}</thead><tbody>${rows}</tbody></table>`;
+}
+
 function openExcelModal(){
   if(!schedule || Object.keys(schedule).length===0){
     alert('先に勤務表を生成してください。');
@@ -1554,7 +1597,8 @@ function openExcelModal(){
   _excelFilename = `勤務表_${currentYear}年${currentMonth}月.xlsx`;
   _excelBlob = generateExcelBlob();
   document.getElementById('excelModalMsg').textContent =
-    `「${_excelFilename}」を生成しました。Google Driveに保存するか、キャンセルを選択してください。`;
+    `${currentYear}年${currentMonth}月の勤務表 — 内容を確認してGoogle Driveに保存してください。`;
+  document.getElementById('excelPreview').innerHTML = buildPreviewHtml();
   document.getElementById('driveStatus').textContent = '';
   const clientId = getGDriveClientId();
   const btn = document.getElementById('driveSaveBtn');
