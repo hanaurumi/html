@@ -1103,11 +1103,19 @@ function saveKaiHistory(kaiCounts){
   });
   lsSet(KAI_HISTORY_KEY, JSON.stringify(hist));
 }
+function fiscalYear(){ return currentMonth>=4 ? currentYear : currentYear-1; } // 4月始まり年度
 function kaiTakenThisYear(s){
-  // 今年（今月含む）の開院記念日取得日数
+  // 今年度（4月〜3月）の開院記念日取得日数（今月含む）
+  const fy = fiscalYear();
   const hist = loadKaiHistory();
-  return (hist[s.id]||[]).filter(r=>r.year===currentYear)
-    .reduce((sum,r)=>sum+r.count, 0);
+  return (hist[s.id]||[]).filter(r=>{
+    // 4〜12月はfy年, 1〜3月はfy+1年
+    return (r.month>=4 && r.year===fy) || (r.month<=3 && r.year===fy+1);
+  }).reduce((sum,r)=>sum+r.count, 0);
+}
+function kaiAvailable(d){
+  // 開院記念日は9月16日以降のみ使用可
+  return currentMonth>9 || currentMonth<=3 || (currentMonth===9 && d>=16);
 }
 const LATE_CAP = 3;
 function isJunior(s){ return s.exp==='1st'||s.exp==='2nd'; }
@@ -1302,8 +1310,9 @@ function generateSchedule(locks={}){
         // 上限超えの場合は休み希望として処理
         else { if(strong) dayAssign[s.id]={type:'restWish',softReq:false}; }
       } else if(r==='開'){
-        // 開院記念日：年1回取得義務。年休と同様に公休クォートとは別カウント
-        dayAssign[s.id]={type:'開'};
+        // 開院記念日：9/16以降のみ・年度内1回取得義務
+        if(kaiAvailable(d)) dayAssign[s.id]={type:'開'};
+        else if(strong) dayAssign[s.id]={type:'restWish',softReq:false}; // 期間外は休み希望に
       }
     });
     // Phase3: 夜勤充足（softReqの日勤をNG確認しつつ必要なら夜勤へ振り替え）
@@ -1858,11 +1867,11 @@ function runGeneration(keepLocks=false){
     kaiCounts[s.id] = n;
   });
   saveKaiHistory(kaiCounts);
-  // 12月末時点で未取得なら警告（年内最終月の生成時）
-  if(currentMonth===12){
+  // 3月末時点で未取得なら警告（年度最終月の生成時）
+  if(currentMonth===3){
     getActiveStaff().forEach(s=>{
       const total = kaiTakenThisYear(s);
-      if(total===0) warnings.push(`⚠️ ${s.name}：今年度の開院記念日休暇がまだ取得されていません（年1回取得義務）。`);
+      if(total===0) warnings.push(`⚠️ ${s.name}：今年度（4月〜3月）の開院記念日休暇がまだ取得されていません（年1回取得義務）。`);
     });
   }
   // 夜勤回数履歴を保存（3ヶ月連続ルール用）
