@@ -275,6 +275,7 @@ let weekdayPattern = {0:'B',1:'B',2:'A',3:'B',4:'A',5:'A',6:'B'};
 let holidayPattern = 'B';
 let dateOverridePattern = {};
 let holidayOverride = {};
+let dayCountOverride = {}; // {[dateKey]: {min?:number, max?:number}}
 let weekdayDayMin = 12;
 let weekendDayMin = 6;
 let nenkyuCapDefault = 2;
@@ -364,10 +365,14 @@ function getPattern(d){
 }
 function requiredCounts(d){
   const pattern = getPattern(d);
+  const dk = dateKey(d);
+  const ov = dayCountOverride[dk] || {};
+  const baseDay = isWeekendOrHoliday(d) ? weekendDayMin : weekdayDayMin;
   return {
     night: pattern==='A' ? 4 : 3,
     late:  pattern==='B' ? 1 : 0,
-    day:   isWeekendOrHoliday(d) ? weekendDayMin : weekdayDayMin
+    day:   (ov.min != null) ? ov.min : baseDay,
+    dayMax: (ov.max != null) ? ov.max : null
   };
 }
 function sanitizeWeekendHolidayPatterns(){
@@ -454,6 +459,7 @@ async function loadSettings(){
       holidayPattern = s.holidayPattern || holidayPattern;
       dateOverridePattern = s.dateOverridePattern || {};
       holidayOverride = s.holidayOverride || {};
+      dayCountOverride = s.dayCountOverride || {};
       weekdayDayMin = s.weekdayDayMin || 12;
       weekendDayMin = s.weekendDayMin || 6;
       nenkyuCapDefault = (s.nenkyuCapDefault!==undefined && s.nenkyuCapDefault!==null) ? s.nenkyuCapDefault : 2;
@@ -468,7 +474,7 @@ function saveSettings(){
     try{
       lsSet(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
-        dateOverridePattern, holidayOverride, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides
+        dateOverridePattern, holidayOverride, dayCountOverride, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides
       }));
     }catch(e){}
   }, 300);
@@ -553,11 +559,21 @@ function renderCalOverrideGrid(){
     const opts = we ? WEEKEND_PATTERN_OPTIONS : WEEKDAY_PATTERN_OPTIONS;
     let patOpts = `<option value="">既定（曜日設定に従う）</option>` + opts.map(([v,l])=>`<option value="${v}" ${curPattern===v?'selected':''}>${l}</option>`).join('');
     const patternArea = `<select onchange="dateOverridePattern['${dk}']=this.value||undefined; if(!this.value) delete dateOverridePattern['${dk}'];">${patOpts}</select>`;
+    const ov = dayCountOverride[dk] || {};
+    const dayMinArea = !we ? `<label style="font-size:0.8em;margin-top:4px;display:flex;align-items:center;gap:4px;">
+      日勤下限<input type="number" min="1" max="40" style="width:52px;" placeholder="標準" value="${ov.min!=null?ov.min:''}"
+        onchange="setDayCountOverride('${dk}','min',this.value)">人
+    </label>
+    <label style="font-size:0.8em;display:flex;align-items:center;gap:4px;">
+      日勤上限<input type="number" min="1" max="40" style="width:52px;" placeholder="なし" value="${ov.max!=null?ov.max:''}"
+        onchange="setDayCountOverride('${dk}','max',this.value)">人
+    </label>` : '';
     html += `<div class="day ${we?'we':''}">
       <div class="d">${d}日(${dowLabel(d)})</div>
       ${isHoliday(d)?'<div class="holiday-tag">祝日判定</div>':''}
       ${patternArea}
       <select onchange="setHolidayOverride('${dk}', this.value)">${holOpts}</select>
+      ${dayMinArea}
     </div>`;
   }
   grid.innerHTML = html;
@@ -565,6 +581,14 @@ function renderCalOverrideGrid(){
 function setHolidayOverride(dk, val){
   if(val===''){ delete holidayOverride[dk]; }
   else { holidayOverride[dk] = (val==='true'); }
+}
+function setDayCountOverride(dk, field, val){
+  const n = parseInt(val, 10);
+  if(!dayCountOverride[dk]) dayCountOverride[dk] = {};
+  if(isNaN(n) || val==='') delete dayCountOverride[dk][field];
+  else dayCountOverride[dk][field] = n;
+  if(Object.keys(dayCountOverride[dk]).length===0) delete dayCountOverride[dk];
+  saveSettings();
 }
 function saveAndRerenderSettings(){
   weekdayDayMin = parseInt(document.getElementById('weekdayDayMinInput').value,10) || 12;
@@ -985,6 +1009,19 @@ function generateSchedule(){
     }
     let restFromFlexible = [...flexA, ...flexB];
     if(dayNeeded>0) warnings.push(`${d}日(${dowLabel(d)})：日勤が${dayNeeded}名不足しています。`);
+    // 日勤上限（dayMax）超過分を公休へ戻す（リーダー・師長代行・weekendOff優先勤務者は除く）
+    if(req.dayMax != null && dayList.length > req.dayMax){
+      const removable = dayList.filter(s=> !s.leader && !s.deputyHead && !s.weekendOff)
+        .sort((a,b)=> restSortKey(b,daysRemaining)-restSortKey(a,daysRemaining));
+      let excess = dayList.length - req.dayMax;
+      for(const s of removable){
+        if(excess<=0) break;
+        delete dayAssign[s.id];
+        dayList = dayList.filter(x=>x!==s);
+        restFromFlexible.push(s);
+        excess--;
+      }
+    }
     // 日勤リーダー・師長代行確保（最低人数を超えてでも追加）
     (function ensureDayLeaders(){
       if(isWeekendOrHoliday(d)){
