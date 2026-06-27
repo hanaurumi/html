@@ -695,6 +695,7 @@ function applyMonthChange(){
     renderPeriodLabel();
     renderCalOverrideGrid();
     renderRequestGrid();
+    renderPrevCarryoverTable();
     renderNightOnlySelect();
     renderRules();
     document.getElementById('resultSection').style.display='none';
@@ -791,8 +792,11 @@ function addNewStaff(){
   rebuildStaffMap();
   saveStaffData();
   renderStaffTable();
+  renderNgStaffSelects();
+  renderNgList();
   renderNightOnlySelect();
   renderRequestGrid();
+  renderPrevCarryoverTable();
 }
 function deleteStaff(staffId){
   const s = STAFF_MAP[staffId];
@@ -802,8 +806,11 @@ function deleteStaff(staffId){
   rebuildStaffMap();
   saveStaffData();
   renderStaffTable();
+  renderNgStaffSelects();
+  renderNgList();
   renderNightOnlySelect();
   renderRequestGrid();
+  renderPrevCarryoverTable();
 }
 function nenkyuExtra(s){ return s.nenkyuExtra || 0; }
 function setNenkyuExtra(staffId, value){
@@ -1798,7 +1805,10 @@ function generateDefaultRulesHtml(){
   renderDayMinInputs();
   renderCalOverrideGrid();
   renderStaffTable();
+  renderNgStaffSelects();
+  renderNgList();
   renderRequestGrid();
+  renderPrevCarryoverTable();
   renderNightOnlySelect();
   renderRules();
   // Google Drive Client ID を復元（設定UI有効化後に使用）
