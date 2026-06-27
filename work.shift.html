@@ -1536,13 +1536,27 @@ function countShifts(staffId){
 }
 
 // シート1: スタッフ×日付グリッド ＋ 個人集計
+// 日別人数カウント（全日分）
+function calcDailyCounts(){
+  const dim = daysInMonth();
+  const staff = getActiveStaff();
+  const result = [];
+  for(let d=1;d<=dim;d++){
+    const cnt=Object.fromEntries(SHIFT_KEYS.map(k=>[k,0]));
+    staff.forEach(s=>{ const t=schedule[s.id][d].type; if(cnt[t]!==undefined) cnt[t]++; });
+    result.push(cnt);
+  }
+  return result;
+}
+
+// Excelシート: スタッフ行 ＋ 下部に日別集計行（1テーブル）
 function buildScheduleSheetData(){
   const dim = daysInMonth();
   const staff = getActiveStaff();
-  const header = ['氏名','チーム'].concat(
-    Array.from({length:dim},(_,i)=>`${i+1}(${DOW_LABEL[new Date(currentYear,currentMonth-1,i+1).getDay()]})`)
-  ).concat(SHIFT_LABELS);
+  const dayHeader = Array.from({length:dim},(_,i)=>`${i+1}(${DOW_LABEL[new Date(currentYear,currentMonth-1,i+1).getDay()]})`);
+  const header = ['氏名','チーム'].concat(dayHeader).concat(SHIFT_LABELS);
   const rows = [header];
+  // スタッフ行
   staff.forEach(s=>{
     const c = countShifts(s.id);
     const cells = [s.name, s.team];
@@ -1553,50 +1567,27 @@ function buildScheduleSheetData(){
     SHIFT_KEYS.forEach(k=> cells.push(c[k]||0));
     rows.push(cells);
   });
-  return rows;
-}
-
-// シート2: 日別集計（行=日付、列=勤務種別の人数）
-function buildDailySheetData(){
-  const dim = daysInMonth();
-  const staff = getActiveStaff();
-  const header = ['日付','曜日','区分'].concat(SHIFT_LABELS).concat(['合計勤務者']);
-  const rows = [header];
-  for(let d=1;d<=dim;d++){
-    const dow = dowLabel(d);
-    const we = isWeekendOrHoliday(d);
-    const kubun = isHoliday(d)?'祝日':isWeekend(d)?'土日':'平日';
-    const cnt={night:0,late:0,late2:0,day:0,rest:0,'公':0,'祝':0,'年休':0,'特':0};
-    staff.forEach(s=>{ const t=schedule[s.id][d].type; if(cnt[t]!==undefined) cnt[t]++; });
-    const workTotal = cnt.night + cnt.late + cnt.late2 + cnt.day + cnt.rest;
-    const row = [`${currentMonth}/${d}`, dow, kubun].concat(SHIFT_KEYS.map(k=>cnt[k]||0)).concat([workTotal]);
+  // 区切り行
+  rows.push([]);
+  // 日別集計行（勤務種別ごと）
+  const daily = calcDailyCounts();
+  SHIFT_KEYS.forEach((k,i)=>{
+    const row = [SHIFT_LABELS[i],''];
+    for(let d=0;d<dim;d++) row.push(daily[d][k]||0);
+    // 右側の集計列は合計
+    const total = daily.reduce((s,c)=>s+(c[k]||0),0);
+    SHIFT_KEYS.forEach((_,j)=> row.push(j===i ? total : ''));
     rows.push(row);
-  }
-  // 合計行
-  const totals = ['合計','',''];
-  SHIFT_KEYS.forEach(k=>{
-    let sum=0;
-    for(let d=1;d<=dim;d++){
-      staff.forEach(s=>{ if(schedule[s.id][d].type===k) sum++; });
-    }
-    totals.push(sum);
   });
-  totals.push('');
-  rows.push(totals);
   return rows;
 }
 
 function generateExcelBlob(){
   const dim = daysInMonth();
   const wb = XLSX.utils.book_new();
-  // シート1: 勤務表
-  const ws1 = XLSX.utils.aoa_to_sheet(buildScheduleSheetData());
-  ws1['!cols'] = [{wch:10},{wch:5}].concat(Array(dim).fill({wch:4})).concat(Array(9).fill({wch:5}));
-  XLSX.utils.book_append_sheet(wb, ws1, '勤務表');
-  // シート2: 日別集計
-  const ws2 = XLSX.utils.aoa_to_sheet(buildDailySheetData());
-  ws2['!cols'] = [{wch:8},{wch:5},{wch:5}].concat(Array(9).fill({wch:6})).concat([{wch:8}]);
-  XLSX.utils.book_append_sheet(wb, ws2, '日別集計');
+  const ws = XLSX.utils.aoa_to_sheet(buildScheduleSheetData());
+  ws['!cols'] = [{wch:10},{wch:5}].concat(Array(dim).fill({wch:4})).concat(Array(9).fill({wch:5}));
+  XLSX.utils.book_append_sheet(wb, ws, `${currentYear}年${currentMonth}月`);
   const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
   return new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -1607,14 +1598,16 @@ function buildPreviewHtml(){
   const TYPE_BG={night:'#2C3E50',late:'#B7791F',late2:'#7B6AF0',day:'#EAF4F4',rest:'#E3E7EA','公':'#F0F0F0','祝':'#FBE3E3','年休':'#E8E4F5','特':'#D6EAF8'};
   const TYPE_FG={night:'#fff',late:'#fff',late2:'#fff'};
 
-  // ─── テーブル1: 勤務表グリッド ───
-  let th1 = '<tr><th>氏名</th><th>チーム</th>';
+  // ─── 共通ヘッダー ───
+  let thead = '<tr><th>氏名</th><th>チーム</th>';
   for(let d=1;d<=dim;d++){
     const we=isWeekendOrHoliday(d);
-    th1 += `<th style="${we?'background:#FBE3E3;':''}">${d}<br>${dowLabel(d)}</th>`;
+    thead += `<th style="${we?'background:#FBE3E3;':''}">${d}<br>${dowLabel(d)}</th>`;
   }
-  th1 += SHIFT_LABELS.map(l=>`<th>${l}</th>`).join('') + '</tr>';
-  let body1='';
+  thead += SHIFT_LABELS.map(l=>`<th>${l}</th>`).join('') + '</tr>';
+
+  // ─── スタッフ行 ───
+  let tbody='';
   staff.forEach(s=>{
     const c=countShifts(s.id);
     let cells='';
@@ -1624,30 +1617,25 @@ function buildPreviewHtml(){
       cells+=`<td style="${bg?`background:${bg};`:''}${fg?`color:${fg};`:''}">${cellLabel(a.type)+(a.leader?'★':'')+(a.chief?'◆':'')}</td>`;
     }
     const totals=SHIFT_KEYS.map(k=>`<td>${c[k]||''}</td>`).join('');
-    body1+=`<tr><td class="pname">${s.name}</td><td class="pteam">${s.team}</td>${cells}${totals}</tr>`;
+    tbody+=`<tr><td class="pname">${s.name}</td><td class="pteam">${s.team}</td>${cells}${totals}</tr>`;
   });
 
-  // ─── テーブル2: 日別集計 ───
-  let th2=`<tr><th>日付</th><th>曜日</th><th>区分</th>${SHIFT_LABELS.map(l=>`<th>${l}</th>`).join('')}<th>勤務計</th></tr>`;
-  let body2='';
-  const dayTotals=Object.fromEntries(SHIFT_KEYS.map(k=>[k,0]));
-  for(let d=1;d<=dim;d++){
-    const dow=dowLabel(d); const we=isWeekendOrHoliday(d);
-    const kubun=isHoliday(d)?'祝日':isWeekend(d)?'土日':'平日';
-    const cnt=Object.fromEntries(SHIFT_KEYS.map(k=>[k,0]));
-    staff.forEach(s=>{const t=schedule[s.id][d].type; if(cnt[t]!==undefined){cnt[t]++;dayTotals[t]++;}});
-    const wk=cnt.night+cnt.late+cnt.late2+cnt.day+cnt.rest;
-    const rowStyle=we?'background:#fdf0f0;':'';
-    body2+=`<tr style="${rowStyle}"><td>${currentMonth}/${d}</td><td>${dow}</td><td>${kubun}</td>${SHIFT_KEYS.map(k=>`<td>${cnt[k]||''}</td>`).join('')}<td><strong>${wk}</strong></td></tr>`;
-  }
-  const wkTotal=dayTotals.night+dayTotals.late+dayTotals.late2+dayTotals.day+dayTotals.rest;
-  body2+=`<tr style="font-weight:700;background:#e4eef0;"><td colspan="3">合計</td>${SHIFT_KEYS.map(k=>`<td>${dayTotals[k]||''}</td>`).join('')}<td>${wkTotal}</td></tr>`;
+  // ─── 区切り行 ───
+  tbody += `<tr><td colspan="${2+dim+SHIFT_KEYS.length}" style="background:#c8d8dc;height:3px;padding:0;"></td></tr>`;
 
-  return `
-    <p style="font-weight:700;margin:0 0 6px;">▼ 勤務表</p>
-    <table><thead>${th1}</thead><tbody>${body1}</tbody></table>
-    <p style="font-weight:700;margin:14px 0 6px;">▼ 日別集計（勤務種別ごとの人数）</p>
-    <table><thead>${th2}</thead><tbody>${body2}</tbody></table>`;
+  // ─── 日別集計行（勤務種別ごと、同テーブルの下に追加）───
+  const daily = calcDailyCounts();
+  const grandTotal = Object.fromEntries(SHIFT_KEYS.map(k=>[k,0]));
+  daily.forEach(cnt=>SHIFT_KEYS.forEach(k=>{ grandTotal[k]+=(cnt[k]||0); }));
+  SHIFT_KEYS.forEach((k,i)=>{
+    const bg=TYPE_BG[k]||'#f5f5f5'; const fg=TYPE_FG[k]||'';
+    const labelCell=`<td class="pname" style="background:${bg};${fg?'color:'+fg+';':''}font-weight:700;">${SHIFT_LABELS[i]}</td><td style="background:${bg};${fg?'color:'+fg+';':''}"></td>`;
+    const dayCells=daily.map(cnt=>`<td style="background:${bg}15;">${cnt[k]||''}</td>`).join('');
+    const totalCells=SHIFT_KEYS.map((_,j)=>`<td style="font-weight:700;">${j===i?grandTotal[k]:''}</td>`).join('');
+    tbody+=`<tr>${labelCell}${dayCells}${totalCells}</tr>`;
+  });
+
+  return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
 
 function openExcelModal(){
