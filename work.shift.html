@@ -130,12 +130,17 @@
       </div>
     </section>
     <section>
-      <h2>年休の上限（個人ごと・1ヶ月）</h2>
-      <p class="note">公休・祝の枠を使い切った後の休みが「年休」になります。ここで設定した回数を超える分は、休みではなく勤務（日勤）に回されます。状況に応じて、個別に追加したい場合は②スタッフタブで設定できます。</p>
+      <h2>年休の上限・最低保証（個人ごと・1ヶ月）</h2>
+      <p class="note">公休・祝の枠を使い切った後の休みが「年休」になります。全員が最低保証回数の年休を取れるよう調整します（時短勤務スタッフも含む）。上限を超える分は日勤に回します。</p>
       <div class="field-row">
         <label>年休の上限（既定値）</label>
         <input type="number" id="nenkyuCapInput" min="0" max="31" style="width:80px;">
         <span class="note" style="margin:0;">回／月</span>
+      </div>
+      <div class="field-row">
+        <label>年休の最低保証（1人あたり）</label>
+        <input type="number" id="nenkyuMinInput" min="0" max="10" style="width:80px;">
+        <span class="note" style="margin:0;">回／月（全員がこの回数以上取れるよう調整）</span>
       </div>
       <div class="actions">
         <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
@@ -345,6 +350,7 @@ let dayCountOverride = {}; // {[dateKey]: {min?:number, max?:number}}
 let weekdayDayMin = 12;
 let weekendDayMin = 6;
 let nenkyuCapDefault = 2;
+let nenkyuMinDefault = 1;
 let staffOverrides = {};
 let requests = {};
 let requestStrength = {}; // {[staffId]: {[day]: 'strong'|'soft'}}  strong=必須, soft=できれば
@@ -540,6 +546,7 @@ async function loadSettings(){
       weekdayDayMin = s.weekdayDayMin || 12;
       weekendDayMin = s.weekendDayMin || 6;
       nenkyuCapDefault = (s.nenkyuCapDefault!==undefined && s.nenkyuCapDefault!==null) ? s.nenkyuCapDefault : 2;
+      nenkyuMinDefault = (s.nenkyuMinDefault!==undefined && s.nenkyuMinDefault!==null) ? s.nenkyuMinDefault : 1;
       staffOverrides = s.staffOverrides || {};
     }
   }catch(e){}
@@ -551,7 +558,7 @@ function saveSettings(){
     try{
       lsSet(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
-        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides
+        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekendDayMin, nenkyuCapDefault, nenkyuMinDefault, staffOverrides
       }));
     }catch(e){}
   }, 300);
@@ -630,6 +637,7 @@ function renderDayMinInputs(){
   document.getElementById('weekdayDayMinInput').value = weekdayDayMin;
   document.getElementById('weekendDayMinInput').value = weekendDayMin;
   document.getElementById('nenkyuCapInput').value = nenkyuCapDefault;
+  document.getElementById('nenkyuMinInput').value = nenkyuMinDefault;
 }
 function renderCalOverrideGrid(){
   const grid = document.getElementById('calOverrideGrid');
@@ -680,6 +688,9 @@ function saveAndRerenderSettings(){
   weekendDayMin = parseInt(document.getElementById('weekendDayMinInput').value,10) || 6;
   nenkyuCapDefault = parseInt(document.getElementById('nenkyuCapInput').value,10);
   if(isNaN(nenkyuCapDefault) || nenkyuCapDefault<0) nenkyuCapDefault = 2;
+  nenkyuMinDefault = parseInt(document.getElementById('nenkyuMinInput').value,10);
+  if(isNaN(nenkyuMinDefault) || nenkyuMinDefault<0) nenkyuMinDefault = 1;
+  nenkyuMinDefault = Math.min(nenkyuMinDefault, nenkyuCapDefault); // 最低保証は上限を超えない
   saveSettings();
   renderPeriodLabel();
   renderCalOverrideGrid();
@@ -1075,7 +1086,7 @@ function generateSchedule(){
     state[s.id] = {nightCount:0, lateCount:0, consec: co.consec||0, prevType: co.lastShift||null, workCount:0,
                    kouRemaining:kouQuota, shukuRemaining:shukuQuota, otherCount:0,
                    nightStreak:0, forcedRestDaysLeft: co.lastShift==='night' ? 0 : 0,
-                   virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota) : avgTotalRestPerRegular};
+                   virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota+nenkyuMinDefault) : Math.max(avgTotalRestPerRegular, kouQuota+shukuQuota+nenkyuMinDefault)};
     // 前月末が夜勤 → 1日目は明けになるのでPhase1で処理される（prevType='night'をセット済み）
     // 前月末が明け → 1日目は公休にする（prevType='rest'をセット済み）
   });
@@ -1493,6 +1504,51 @@ function generateSchedule(){
       schedule[s.id][d] = {type:label, leader:false};
     });
   }
+  // 年休最低保証の後処理
+  // 通常スタッフ：年休が nenkyuMinDefault 未満なら平日の公休を年休に再ラベル
+  // 時短スタッフ：restPending が残っていれば年休として確定（平日も含む）
+  STAFF.filter(s=>s.id!==nightOnlyId).forEach(s=>{
+    const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
+    const effectiveMin = Math.min(nenkyuMinDefault, effectiveCap);
+    if(effectiveMin <= 0) return;
+    if(s.weekendOff){
+      // 時短スタッフ：平日の restPending → 年休（最低保証分）
+      let nenkyuCount = 0;
+      for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') nenkyuCount++; }
+      for(let d=1; d<=DAYS; d++){
+        if(nenkyuCount >= effectiveMin) break;
+        if(schedule[s.id][d]?.type==='restPending'){
+          schedule[s.id][d] = {type:'年休', leader:false};
+          state[s.id].otherCount++;
+          teamOtherCount[s.team]++;
+          nenkyuCount++;
+        }
+      }
+      // 残りの restPending は公/祝へ
+      for(let d=1;d<=DAYS;d++){
+        if(schedule[s.id][d]?.type==='restPending'){
+          const label = isHoliday(d)?'祝':isWeekend(d)?'公':'公';
+          schedule[s.id][d]={type:label,leader:false};
+        }
+      }
+    } else {
+      // 通常スタッフ：年休が足りなければ平日の公休を年休に再ラベル
+      let nenkyuCount = 0;
+      for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') nenkyuCount++; }
+      if(nenkyuCount < effectiveMin){
+        for(let d=1; d<=DAYS; d++){
+          if(nenkyuCount >= effectiveMin) break;
+          const t = schedule[s.id][d]?.type;
+          if(t==='公' && !isWeekend(d) && !isHoliday(d)){
+            schedule[s.id][d] = {type:'年休', leader:false};
+            state[s.id].otherCount++;
+            teamOtherCount[s.team]++;
+            nenkyuCount++;
+          }
+        }
+      }
+    }
+  });
   // 月末チェック
   STAFF.forEach(s=>{
     if(s.weekendOff) return;
@@ -1763,8 +1819,9 @@ function generateDefaultRulesHtml(){
     <li>公休・祝日は月間の必須休みとして合算して管理する（今月：公休${kou}日＋祝${shuku}日＝計${kou+shuku}日）</li>
     <li>休みのラベルは実際の日付タイプで決定：祝日 → 祝、土日 → 公、平日の余剰休み → 年休</li>
     <li>土日・祝日の休みは人員不足でも日勤に変換しない（平日の余剰休みのみ日勤に振り替える）</li>
-    <li>年休の上限：1人あたり月${nenkyuCapDefault}回（①基本設定タブで変更可）。上限を超える分は公休に振り替え</li>
-    <li>年休は公休クォータ（今月${kouQ}日）を全て消化してから付与する。土日だけで公休が埋まらない場合は平日の休みを先に公休として使う</li>
+    <li>年休の上限：1人あたり月${nenkyuCapDefault}回、最低保証：${nenkyuMinDefault}回（①基本設定タブで変更可）</li>
+    <li>全スタッフが最低${nenkyuMinDefault}回の年休を取れるよう調整する（時短勤務・weekendOff含む）</li>
+    <li>年休は公休クォータを全て消化してから付与する。土日だけで公休が埋まらない場合は平日の休みを先に公休として使う</li>
     <li>土日2連休は月1回、自動生成時にできるだけ確保するよう試みる</li>
   </ul>
   <p><strong>【勤務希望の反映ルール】</strong></p>
