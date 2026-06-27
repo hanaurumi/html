@@ -1392,35 +1392,31 @@ function generateSchedule(){
     const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
     const totalCap = kouQuota + shukuQuota + effectiveCap;
     if(restDays.length > totalCap){
-      const excessCount = restDays.length - totalCap;
-      const keepDays = [];
-      let excessTaken = 0;
-      for(let i=0; i<restDays.length; i++){
-        const isExcess = Math.floor(i*excessCount/restDays.length) !== Math.floor((i-1)*excessCount/restDays.length);
-        if(isExcess && excessTaken < excessCount){
-          schedule[s.id][restDays[i]] = {type:'day', leader:false};
-          state[s.id].workCount++;
-          excessTaken++;
-        } else {
-          keepDays.push(restDays[i]);
-        }
+      // 公休・祝日は変換せず、平日の休みのみ日勤に変換
+      const mandatory = restDays.filter(d=>isHoliday(d)||isWeekend(d));
+      let weekdays = restDays.filter(d=>!isHoliday(d)&&!isWeekend(d));
+      const weekdayCap = Math.max(0, totalCap - mandatory.length);
+      while(weekdays.length > weekdayCap){
+        const d = weekdays.pop();
+        schedule[s.id][d] = {type:'day', leader:false};
+        state[s.id].workCount++;
       }
-      restDays = keepDays;
+      restDays = [...mandatory, ...weekdays].sort((a,b)=>a-b);
     }
     const N = restDays.length;
-    if(N < kouQuota+shukuQuota){
-      warnings.push(`${s.name}：今月の休みが${N}日しかなく、公休・祝の合計${kouQuota+shukuQuota}日分を確保できませんでした（必要人数が多すぎる可能性があります）。`);
+    const mandatoryTotal = kouQuota + shukuQuota;
+    if(N < mandatoryTotal){
+      warnings.push(`${s.name}：今月の休みが${N}日しかなく、公休・祝の合計${mandatoryTotal}日分を確保できませんでした（必要人数が多すぎる可能性があります）。`);
     }
-    let kouLeft = kouQuota, shukuLeft = shukuQuota, otherLeft = Math.max(0, N - kouQuota - shukuQuota);
-    const otherTotal = otherLeft;
+    // 祝日→祝、土日→公、平日→年休（上限まで）→公 の順でラベル付け
+    let nenkyuLeft = Math.max(0, N - mandatoryTotal);
+    const effectiveNenkyuCap = nenkyuCapDefault + nenkyuExtra(s);
+    if(nenkyuLeft > effectiveNenkyuCap) nenkyuLeft = effectiveNenkyuCap;
     restDays.forEach(d=>{
-      const kouRatio = kouQuota>0 ? kouLeft/kouQuota : -1;
-      const shukuRatio = shukuQuota>0 ? shukuLeft/shukuQuota : -1;
-      const otherRatio = otherTotal>0 ? otherLeft/otherTotal : -1;
       let label;
-      if(kouRatio>=shukuRatio && kouRatio>=otherRatio && kouLeft>0){ label='公'; kouLeft--; }
-      else if(shukuRatio>=otherRatio && shukuLeft>0){ label='祝'; shukuLeft--; }
-      else if(otherLeft>0){ label='年休'; otherLeft--; }
+      if(isHoliday(d)){ label='祝'; }
+      else if(isWeekend(d)){ label='公'; }
+      else if(nenkyuLeft>0){ label='年休'; nenkyuLeft--; }
       else { label='公'; }
       schedule[s.id][d] = {type:label, leader:false};
       if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
@@ -1432,15 +1428,11 @@ function generateSchedule(){
     const restDays = [];
     for(let d=1; d<=DAYS; d++){ if(schedule[s.id][d].type==='restPendingSpecial') restDays.push(d); }
     const N = restDays.length;
-    let kouLeft = kouQuota, shukuLeft = shukuQuota, tokuLeft = Math.max(0, N - kouQuota - shukuQuota);
-    const tokuTotal = tokuLeft;
+    let tokuLeft = Math.max(0, N - kouQuota - shukuQuota);
     restDays.forEach(d=>{
-      const kouRatio = kouQuota>0 ? kouLeft/kouQuota : -1;
-      const shukuRatio = shukuQuota>0 ? shukuLeft/shukuQuota : -1;
-      const tokuRatio = tokuTotal>0 ? tokuLeft/tokuTotal : -1;
       let label;
-      if(kouRatio>=shukuRatio && kouRatio>=tokuRatio && kouLeft>0){ label='公'; kouLeft--; }
-      else if(shukuRatio>=tokuRatio && shukuLeft>0){ label='祝'; shukuLeft--; }
+      if(isHoliday(d)){ label='祝'; }
+      else if(isWeekend(d)){ label='公'; }
       else if(tokuLeft>0){ label='特'; tokuLeft--; }
       else { label='公'; }
       schedule[s.id][d] = {type:label, leader:false};
@@ -1529,7 +1521,9 @@ function renderWarnings(){
 function renderSummary(state){
   const t = document.getElementById('summaryTable');
   const dim = daysInMonth();
-  let html = '<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>遅</th><th>日勤</th><th>明け</th><th>公休</th><th>祝</th><th>年休</th><th>特</th></tr>';
+  const {kou:kouQ, shuku:shukuQ} = computeQuotas();
+  const mandQ = kouQ + shukuQ;
+  let html = `<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>遅</th><th>日勤</th><th>明け</th><th title="公休+祝日の合計（月間必須休み${mandQ}日）">公+祝<br><small style="font-weight:normal;color:#888">必須${mandQ}日</small></th><th>公休</th><th>祝</th><th>年休</th><th>特</th></tr>`;
   getActiveStaff().forEach(s=>{
     let night=0,late=0,late2=0,day=0, kou=0, shuku=0, rest=0, other=0, toku=0;
     for(let d=1; d<=dim; d++){
@@ -1537,11 +1531,15 @@ function renderSummary(state){
       if(t2==='公') kou++; else if(t2==='祝') shuku++; else if(t2==='rest') rest++; else if(t2==='年休') other++; else if(t2==='特') toku++;
       else if(t2==='night') night++; else if(t2==='late') late++; else if(t2==='late2') late2++; else if(t2==='day') day++;
     }
+    const mandActual = kou + shuku;
+    const mandColor = mandActual < mandQ ? 'color:#c00;font-weight:bold' : mandActual > mandQ ? 'color:#0a0' : '';
     html += `<tr>
       <td class="name">${s.name}</td>
       <td>${s.team}</td>
       <td class="num">${night}</td><td class="num">${late}</td><td class="num">${late2||''}</td><td class="num">${day}</td>
-      <td class="num">${rest}</td><td class="num">${kou}</td><td class="num">${shuku}</td><td class="num">${other}</td><td class="num">${toku}</td>
+      <td class="num">${rest}</td>
+      <td class="num" style="${mandColor}">${mandActual}</td>
+      <td class="num">${kou}</td><td class="num">${shuku}</td><td class="num">${other}</td><td class="num">${toku}</td>
     </tr>`;
   });
   t.innerHTML = html;
