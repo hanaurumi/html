@@ -8,7 +8,7 @@
   :root{
     --bg:#F7F8FA; --surface:#FFFFFF; --text:#1E2A38; --muted:#6B7785;
     --accent:#2C5F6F; --accent-light:#E4EEF0;
-    --night:#2C3E50; --late:#B7791F; --day:#EAF4F4; --kou:#F0F0F0; --shuku:#FBE3E3; --rest:#E3E7EA; --other:#E8E4F5; --toku:#D6EAF8;
+    --night:#2C3E50; --late:#B7791F; --late2:#7B6AF0; --day:#EAF4F4; --kou:#F0F0F0; --shuku:#FBE3E3; --rest:#E3E7EA; --other:#E8E4F5; --toku:#D6EAF8;
     --warn-bg:#FDECEC; --warn-text:#B23B3B; --leader:#C9971C; --border:#DCE2E6;
   }
   *{box-sizing:border-box;}
@@ -40,6 +40,7 @@
   td.we{background:#FFF6F6;} th.we{background:#FBE3E3;color:#B23B3B;}
   .cell-night{background:var(--night);color:#fff;font-weight:700;}
   .cell-late{background:var(--late);color:#fff;font-weight:700;}
+  .cell-late2{background:var(--late2);color:#fff;font-weight:700;}
   .cell-day{background:var(--day);}
   .cell-公{background:var(--kou);color:var(--muted);}
   .cell-祝{background:var(--shuku);color:#9B4242;}
@@ -215,6 +216,7 @@
       <div class="legend">
         <span><span class="swatch" style="background:var(--night)"></span>夜勤</span>
         <span><span class="swatch" style="background:var(--late)"></span>遅B</span>
+        <span><span class="swatch" style="background:var(--late2)"></span>遅（10:00〜18:45）</span>
         <span><span class="swatch" style="background:var(--day)"></span>日勤</span>
         <span><span class="swatch" style="background:var(--rest)"></span>明け（夜勤翌日）</span>
         <span><span class="swatch" style="background:var(--kou)"></span>公休</span>
@@ -678,7 +680,7 @@ function saveStaffOverrides(){
   document.getElementById('staffSaveStatus').textContent = '保存しました';
 }
 /* ===================== UI: 希望入力グリッド ===================== */
-const REQUEST_OPTIONS = [['','指定なし'],['night','夜勤希望'],['late','遅B希望'],['day','日勤希望'],['off','休み希望']];
+const REQUEST_OPTIONS = [['','指定なし'],['night','夜勤希望'],['late','遅B希望'],['late2','遅希望（委員会等）'],['day','日勤希望'],['off','休み希望']];
 function renderRequestGrid(){
   const t = document.getElementById('requestGrid');
   const dim = daysInMonth();
@@ -879,6 +881,7 @@ function generateSchedule(){
       const r = reqOf(s,d);
       if(r==='night' && eligibleNight(s,d)) dayAssign[s.id]={type:'night',leader:false};
       else if(r==='late' && req.late>0 && eligibleLate(s,d)) dayAssign[s.id]={type:'late'};
+      else if(r==='late2' && eligibleDay(s,d)) dayAssign[s.id]={type:'late2'};
       else if(r==='day' && eligibleDay(s,d)) dayAssign[s.id]={type:'day'};
     });
     // Phase3: 夜勤充足
@@ -1064,6 +1067,7 @@ function generateSchedule(){
         }
       }
       else if(a.type==='late'){ st.lateCount++; st.consec++; st.workCount++; st.prevType='late'; teamLateCount[s.team]++; }
+      else if(a.type==='late2'){ st.consec++; st.workCount++; st.prevType='day'; }
       else if(a.type==='day'){ st.consec++; st.workCount++; st.prevType='day'; }
       else if(a.type==='rest'){
         // 明けは勤務扱い（consec継続・virtualRemainingは消費しない）
@@ -1165,6 +1169,7 @@ function generateSchedule(){
 function cellClass(type){
   if(type==='night') return 'cell-night';
   if(type==='late') return 'cell-late';
+  if(type==='late2') return 'cell-late2';
   if(type==='day') return 'cell-day';
   if(type==='rest') return 'cell-rest';
   if(type==='公') return 'cell-公';
@@ -1180,7 +1185,7 @@ function cellLabel(type){
   if(type==='rest') return '明';
   return type;
 }
-const EDIT_OPTIONS = [['night','夜'],['late','遅'],['day','日'],['rest','明'],['公','公'],['祝','祝'],['年休','年休'],['特','特']];
+const EDIT_OPTIONS = [['night','夜'],['late','遅B'],['late2','遅'],['day','日'],['rest','明'],['公','公'],['祝','祝'],['年休','年休'],['特','特']];
 function renderResultGrid(){
   const t = document.getElementById('resultGrid');
   const dim = daysInMonth();
@@ -1219,18 +1224,18 @@ function renderWarnings(){
 function renderSummary(state){
   const t = document.getElementById('summaryTable');
   const dim = daysInMonth();
-  let html = '<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>日勤</th><th>明け</th><th>公休</th><th>祝</th><th>年休</th><th>特</th></tr>';
+  let html = '<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>遅</th><th>日勤</th><th>明け</th><th>公休</th><th>祝</th><th>年休</th><th>特</th></tr>';
   getActiveStaff().forEach(s=>{
-    let night=0,late=0,day=0, kou=0, shuku=0, rest=0, other=0, toku=0;
+    let night=0,late=0,late2=0,day=0, kou=0, shuku=0, rest=0, other=0, toku=0;
     for(let d=1; d<=dim; d++){
       const t2=schedule[s.id][d].type;
       if(t2==='公') kou++; else if(t2==='祝') shuku++; else if(t2==='rest') rest++; else if(t2==='年休') other++; else if(t2==='特') toku++;
-      else if(t2==='night') night++; else if(t2==='late') late++; else if(t2==='day') day++;
+      else if(t2==='night') night++; else if(t2==='late') late++; else if(t2==='late2') late2++; else if(t2==='day') day++;
     }
     html += `<tr>
       <td class="name">${s.name}</td>
       <td>${s.team}</td>
-      <td class="num">${night}</td><td class="num">${late}</td><td class="num">${day}</td>
+      <td class="num">${night}</td><td class="num">${late}</td><td class="num">${late2||''}</td><td class="num">${day}</td>
       <td class="num">${rest}</td><td class="num">${kou}</td><td class="num">${shuku}</td><td class="num">${other}</td><td class="num">${toku}</td>
     </tr>`;
   });
