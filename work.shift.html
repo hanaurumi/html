@@ -195,6 +195,21 @@
         <span class="save-status" id="staffSaveStatus"></span>
       </div>
     </section>
+    <section>
+      <h2>組み合わせNG条件</h2>
+      <p class="note">指定した2名を同じ日の同じ勤務（または全勤務）に入れないようにします。</p>
+      <div class="field-row" style="gap:8px;flex-wrap:wrap;">
+        <select id="ngStaff1" style="flex:1;min-width:100px;"></select>
+        <select id="ngStaff2" style="flex:1;min-width:100px;"></select>
+        <select id="ngType" style="flex:1;min-width:130px;">
+          <option value="same_night">同日夜勤NG</option>
+          <option value="same_day">同日日勤NG</option>
+          <option value="same_shift">同日同勤務すべてNG</option>
+        </select>
+        <button class="btn" onclick="addNgCondition()">追加</button>
+      </div>
+      <div id="ngList" style="margin-top:10px;"></div>
+    </section>
   </div>
   <!-- ============ TAB: 夜勤専従 ============ -->
   <div class="panel" id="panel-nightonly">
@@ -216,8 +231,18 @@
   <!-- ============ TAB: 勤務希望 ============ -->
   <div class="panel" id="panel-requests">
     <section>
+      <h2>前月末の勤務状態（月またぎルール引き継ぎ）</h2>
+      <p class="note">前月最終日の勤務種別と連続勤務日数を入力すると、月初1日目の配置ルール（明け・公休・連続勤務上限）に反映されます。</p>
+      <div class="scroll-wrap" style="max-height:320px;">
+        <table class="staff-table" id="prevCarryoverTable"></table>
+      </div>
+      <div class="actions" style="margin-top:8px;">
+        <button class="btn secondary" onclick="savePrevCarryover();alert('前月末の状態を保存しました。')">保存する</button>
+      </div>
+    </section>
+    <section>
       <h2>勤務希望の入力</h2>
-      <p class="note">各セルでスタッフの希望を選択してください。何も選ばなければ自動生成ロジックに任せます。入力内容はこのブラウザに自動保存されます。</p>
+      <p class="note">各セルでスタッフの希望を選択してください。<strong>🔒必須</strong>は人数が足りていても最優先で反映、<strong>〜できれば</strong>は人数調整の結果変更される場合があります。入力内容はこのブラウザに自動保存されます。</p>
       <div class="actions">
         <button class="btn secondary" onclick="clearRequests()">この月の希望をすべてクリア</button>
         <span class="save-status" id="saveStatus"></span>
@@ -269,6 +294,10 @@
     <section id="warnSection" style="display:none;">
       <h2>警告・確認事項</h2>
       <div id="warnBody"></div>
+      <div class="actions" style="margin-top:8px;" id="autoFixSection" style="display:none;">
+        <button class="btn secondary" onclick="autoFixWarnings()">🔧 警告を自動修正する</button>
+        <span class="note" style="margin-left:8px;">日勤・夜勤不足など単純な過不足を自動で補正します</span>
+      </div>
     </section>
     <section id="summarySection" style="display:none;">
       <h2>集計</h2>
@@ -316,6 +345,9 @@ let weekendDayMin = 6;
 let nenkyuCapDefault = 2;
 let staffOverrides = {};
 let requests = {};
+let requestStrength = {}; // {[staffId]: {[day]: 'strong'|'soft'}}  strong=必須, soft=できれば
+let ngConditions = [];    // [{type:'same_night'|'same_day'|'same_shift', staff1Id, staff2Id}]
+let prevMonthCarryover = {}; // {[staffId]: {lastShift:'night'|'day'|..., consec:N}}
 let nightOnlyStaffId = '';
 let schedule = {};
 let warnings = [];
@@ -484,6 +516,8 @@ function saveStaffData(){
   try{ lsSet(STAFF_KEY, JSON.stringify(ALL_STAFF)); }catch(e){}
 }
 function requestsKey(){ return `requests-${currentYear}${pad(currentMonth)}`; }
+function requestStrengthKey(){ return `req-strength-${currentYear}${pad(currentMonth)}`; }
+function prevCarryoverKey(){ return `prev-carryover-${currentYear}${pad(currentMonth)}`; }
 async function loadSettings(){
   try{
     const val = lsGet(SETTINGS_KEY);
@@ -496,6 +530,7 @@ async function loadSettings(){
       dateOverridePattern = s.dateOverridePattern || {};
       holidayOverride = s.holidayOverride || {};
       dayCountOverride = s.dayCountOverride || {};
+      ngConditions = s.ngConditions || [];
       weekdayDayMin = s.weekdayDayMin || 12;
       weekendDayMin = s.weekendDayMin || 6;
       nenkyuCapDefault = (s.nenkyuCapDefault!==undefined && s.nenkyuCapDefault!==null) ? s.nenkyuCapDefault : 2;
@@ -510,17 +545,24 @@ function saveSettings(){
     try{
       lsSet(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
-        dateOverridePattern, holidayOverride, dayCountOverride, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides
+        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekendDayMin, nenkyuCapDefault, staffOverrides
       }));
     }catch(e){}
   }, 300);
 }
 async function loadRequestsForMonth(){
   requests = {};
-  try{
-    const val = lsGet(requestsKey());
-    if(val){ requests = JSON.parse(val); }
-  }catch(e){}
+  try{ const v=lsGet(requestsKey()); if(v) requests=JSON.parse(v); }catch(e){}
+  requestStrength = {};
+  try{ const v=lsGet(requestStrengthKey()); if(v) requestStrength=JSON.parse(v); }catch(e){}
+  prevMonthCarryover = {};
+  try{ const v=lsGet(prevCarryoverKey()); if(v) prevMonthCarryover=JSON.parse(v); }catch(e){}
+}
+function saveRequestStrength(){
+  try{ lsSet(requestStrengthKey(), JSON.stringify(requestStrength)); }catch(e){}
+}
+function savePrevCarryover(){
+  try{ lsSet(prevCarryoverKey(), JSON.stringify(prevMonthCarryover)); }catch(e){}
 }
 let reqSaveTimer=null;
 function saveRequestsDebounced(){
@@ -529,6 +571,7 @@ function saveRequestsDebounced(){
   reqSaveTimer = setTimeout(()=>{
     try{
       lsSet(requestsKey(), JSON.stringify(requests));
+      saveRequestStrength();
       document.getElementById('saveStatus').textContent = '保存しました（このブラウザのみ）';
     }catch(e){ document.getElementById('saveStatus').textContent = '保存に失敗しました'; }
   }, 400);
@@ -756,8 +799,18 @@ function renderRequestGrid(){
     for(let d=1; d<=dim; d++){
       const we = isWeekendOrHoliday(d);
       const cur = (requests[s.id] && requests[s.id][d]) || '';
+      const isStrong = (requestStrength[s.id] && requestStrength[s.id][d]) === 'strong';
+      const hasReq = !!cur;
       let opts = REQUEST_OPTIONS.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('');
-      body += `<td class="${we?'we':''}"><select onchange="setRequest(${s.id},${d},this.value)">${opts}</select></td>`;
+      const strengthBtn = hasReq
+        ? `<button onclick="toggleStrength(${s.id},${d})" title="${isStrong?'必須希望（クリックでできればに変更）':'できれば希望（クリックで必須に変更）'}"
+            style="font-size:10px;padding:1px 3px;border-radius:3px;border:1px solid #aaa;cursor:pointer;margin-top:2px;display:block;width:100%;
+            background:${isStrong?'#E53E3E':'#D1FAE5'};color:${isStrong?'#fff':'#065F46'};">${isStrong?'🔒必須':'〜できれば'}</button>`
+        : '';
+      body += `<td class="${we?'we':''}" style="padding:2px;vertical-align:top;min-width:70px;">
+        <select onchange="setRequest(${s.id},${d},this.value)" style="width:100%;font-size:10.5px;">${opts}</select>
+        ${strengthBtn}
+      </td>`;
     }
     body += '</tr>';
   });
@@ -766,9 +819,155 @@ function renderRequestGrid(){
 }
 function setRequest(staffId, day, value){
   if(!requests[staffId]) requests[staffId] = {};
-  if(value){ requests[staffId][day] = value; } else { delete requests[staffId][day]; }
+  if(value){ requests[staffId][day] = value; } else {
+    delete requests[staffId][day];
+    if(requestStrength[staffId]) delete requestStrength[staffId][day];
+  }
   saveRequestsDebounced();
+  renderRequestGrid();
 }
+function toggleStrength(staffId, day){
+  if(!requestStrength[staffId]) requestStrength[staffId] = {};
+  const cur = requestStrength[staffId][day] || 'soft';
+  requestStrength[staffId][day] = cur === 'strong' ? 'soft' : 'strong';
+  saveRequestStrength();
+  renderRequestGrid();
+}
+/* ─── NG条件 ─── */
+const NG_TYPE_LABELS = {same_night:'同日夜勤NG', same_day:'同日日勤NG', same_shift:'同日全勤務NG'};
+function renderNgStaffSelects(){
+  const staff = getActiveStaff();
+  ['ngStaff1','ngStaff2'].forEach(id=>{
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    sel.innerHTML = staff.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  });
+}
+function renderNgList(){
+  const el = document.getElementById('ngList');
+  if(!el) return;
+  if(ngConditions.length===0){ el.innerHTML='<p class="note">NG条件はありません</p>'; return; }
+  const staff = getActiveStaff();
+  const name = id => (staff.find(s=>s.id===Number(id))||{name:'?'}).name;
+  el.innerHTML = ngConditions.map((c,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:6px 10px;background:var(--warn-bg);border-radius:6px;">
+      <span style="flex:1;">${name(c.staff1Id)} ＋ ${name(c.staff2Id)}　→　<strong>${NG_TYPE_LABELS[c.type]||c.type}</strong></span>
+      <button class="btn secondary" onclick="removeNgCondition(${i})" style="padding:2px 8px;font-size:12px;">削除</button>
+    </div>`).join('');
+}
+function addNgCondition(){
+  const s1 = Number(document.getElementById('ngStaff1').value);
+  const s2 = Number(document.getElementById('ngStaff2').value);
+  const type = document.getElementById('ngType').value;
+  if(s1===s2){ alert('同じスタッフを選択しています。'); return; }
+  if(ngConditions.some(c=>(c.staff1Id===s1&&c.staff2Id===s2||c.staff1Id===s2&&c.staff2Id===s1)&&c.type===type)){
+    alert('同じ条件が既に登録されています。'); return;
+  }
+  ngConditions.push({type, staff1Id:s1, staff2Id:s2});
+  saveSettings(); renderNgList();
+}
+function removeNgCondition(i){ ngConditions.splice(i,1); saveSettings(); renderNgList(); }
+
+function violatesNg(staffId, assignType, dayAssign){
+  for(const c of ngConditions){
+    let other = null;
+    if(c.staff1Id===staffId) other=c.staff2Id;
+    else if(c.staff2Id===staffId) other=c.staff1Id;
+    else continue;
+    const otherAssign = dayAssign[other];
+    if(!otherAssign) continue;
+    if(c.type==='same_night' && assignType==='night' && otherAssign.type==='night') return true;
+    if(c.type==='same_day'   && assignType==='day'   && otherAssign.type==='day')   return true;
+    if(c.type==='same_shift' && assignType===otherAssign.type) return true;
+  }
+  return false;
+}
+
+/* ─── 前月末引き継ぎ ─── */
+const PREV_SHIFT_OPTIONS = [['','入力なし'],['night','夜勤'],['rest','明け'],['late','遅B'],['late2','遅'],['day','日勤'],['公','公休'],['祝','祝']];
+function renderPrevCarryoverTable(){
+  const t = document.getElementById('prevCarryoverTable');
+  if(!t) return;
+  const staff = getActiveStaff();
+  let html = '<thead><tr><th>氏名</th><th>前月最終日の勤務</th><th>連続勤務日数</th></tr></thead><tbody>';
+  staff.forEach(s=>{
+    const c = prevMonthCarryover[s.id] || {};
+    const shiftSel = PREV_SHIFT_OPTIONS.map(([v,l])=>`<option value="${v}" ${(c.lastShift||'')===v?'selected':''}>${l}</option>`).join('');
+    html += `<tr>
+      <td class="name">${s.name}</td>
+      <td><select onchange="setPrevCarryover(${s.id},'lastShift',this.value)">${shiftSel}</select></td>
+      <td><input type="number" min="0" max="10" style="width:60px;" value="${c.consec||0}"
+        onchange="setPrevCarryover(${s.id},'consec',parseInt(this.value)||0)"></td>
+    </tr>`;
+  });
+  html += '</tbody>';
+  t.innerHTML = html;
+}
+function setPrevCarryover(staffId, field, value){
+  if(!prevMonthCarryover[staffId]) prevMonthCarryover[staffId] = {};
+  prevMonthCarryover[staffId][field] = value;
+}
+
+/* ─── 自動修正 ─── */
+function autoFixWarnings(){
+  const staff = getActiveStaff();
+  const dim = daysInMonth();
+  let fixed = 0;
+  const dayShortRe = /(\d+)日.*：日勤が(\d+)名不足/;
+  const nightShortRe = /(\d+)日.*：夜勤が(\d+)名不足/;
+  for(const w of [...warnings]){
+    // 日勤不足の修正：公休/年休の非必須希望スタッフから振り替え
+    const dm = w.match(dayShortRe);
+    if(dm){
+      const d = parseInt(dm[1]);
+      let need = parseInt(dm[2]);
+      const cands = staff.filter(s=>{
+        const a = schedule[s.id]?.[d];
+        if(!a) return false;
+        const t = a.type;
+        if(t!=='公'&&t!=='年休') return false;
+        const r = requests[s.id]?.[d];
+        const str = requestStrength[s.id]?.[d];
+        if(r==='off' && str==='strong') return false; // 必須休み希望は外せない
+        return true;
+      });
+      for(const s of cands){
+        if(need<=0) break;
+        schedule[s.id][d] = {type:'day', leader:false, chief:false};
+        need--; fixed++;
+      }
+    }
+    // 夜勤不足の修正：公休/年休スタッフから（簡易チェック）
+    const nm = w.match(nightShortRe);
+    if(nm){
+      const d = parseInt(nm[1]);
+      let need = parseInt(nm[2]);
+      const cands = staff.filter(s=>{
+        const a = schedule[s.id]?.[d];
+        if(!a) return false;
+        if(a.type!=='公'&&a.type!=='年休') return false;
+        if(s.night===false) return false;
+        const r = requests[s.id]?.[d];
+        const str = requestStrength[s.id]?.[d];
+        if(r==='off' && str==='strong') return false;
+        return true;
+      });
+      for(const s of cands){
+        if(need<=0) break;
+        schedule[s.id][d] = {type:'night', leader:false, chief:false};
+        need--; fixed++;
+      }
+    }
+  }
+  if(fixed===0){ alert('自動修正できる警告はありませんでした。'); return; }
+  renderResultGrid();
+  renderSummary(lastGeneratedState);
+  // 警告を再評価
+  warnings = warnings.filter(w=>!dayShortRe.test(w)&&!nightShortRe.test(w));
+  renderWarnings();
+  alert(`${fixed}件を自動修正しました。`);
+}
+
 function clearRequests(){
   if(!confirm('この月の勤務希望をすべて削除します。よろしいですか？')) return;
   requests = {};
@@ -820,15 +1019,19 @@ function generateSchedule(){
   const avgTotalRestPerRegular = regularStaffList.length>0 ? totalRestDaysForRegular/regularStaffList.length : (kouQuota+shukuQuota);
   const state = {};
   STAFF.forEach(s=>{
-    state[s.id] = {nightCount:0, lateCount:0, consec:0, prevType:null, workCount:0,
+    const co = prevMonthCarryover[s.id] || {};
+    state[s.id] = {nightCount:0, lateCount:0, consec: co.consec||0, prevType: co.lastShift||null, workCount:0,
                    kouRemaining:kouQuota, shukuRemaining:shukuQuota, otherCount:0,
-                   nightStreak:0, forcedRestDaysLeft:0,
+                   nightStreak:0, forcedRestDaysLeft: co.lastShift==='night' ? 0 : 0,
                    virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota) : avgTotalRestPerRegular};
+    // 前月末が夜勤 → 1日目は明けになるのでPhase1で処理される（prevType='night'をセット済み）
+    // 前月末が明け → 1日目は公休にする（prevType='rest'をセット済み）
   });
   const teamOtherCount = {A:0, B:0};
   const teamNightCount = {A:0, B:0};
   const teamLateCount = {A:0, B:0};
   function reqOf(s,d){ return requests[s.id] && requests[s.id][d]; }
+  function isStrongReq(s,d){ return (requestStrength[s.id]&&requestStrength[s.id][d])==='strong'; }
   function eligibleNight(s,d){
     if(s.night===false) return false;
     if(s.night==='request' && reqOf(s,d)!=='night') return false;
@@ -843,6 +1046,10 @@ function generateSchedule(){
     const r = reqOf(s,d);
     if(r==='off'||r==='day'||r==='late') return false;
     return true;
+  }
+  function eligibleNightWithNg(s,d,dayAssign){
+    if(!eligibleNight(s,d)) return false;
+    return !violatesNg(s.id,'night',dayAssign);
   }
   function eligibleLate(s,d){
     if(!s.lateB) return false;
@@ -869,6 +1076,10 @@ function generateSchedule(){
     const r = reqOf(s,d);
     if(r==='off'||r==='night'||r==='late') return false;
     return true;
+  }
+  function eligibleDayWithNg(s,d,dayAssign){
+    if(!eligibleDay(s,d)) return false;
+    return !violatesNg(s.id,'day',dayAssign);
   }
   function canAddToNight(s, currentList, requiredNight, avoidDouble2nd){
     if(!isJunior(s)) return true;
@@ -936,23 +1147,41 @@ function generateSchedule(){
     STAFF.forEach(s=>{
       if(state[s.id].prevType==='night') dayAssign[s.id] = {type:'rest'};
     });
-    // Phase2: 勤務希望の反映
+    // Phase2: 勤務希望の反映（必須希望を先に処理）
     STAFF.filter(s=>!dayAssign[s.id]).forEach(s=>{
       const r = reqOf(s,d);
-      if(r==='night' && eligibleNight(s,d)) dayAssign[s.id]={type:'night',leader:false};
-      else if(r==='late' && req.late>0 && eligibleLate(s,d)) dayAssign[s.id]={type:'late'};
-      else if(r==='late2' && eligibleDay(s,d)) dayAssign[s.id]={type:'late2'};
-      else if(r==='day' && eligibleDay(s,d)) dayAssign[s.id]={type:'day'};
+      const strong = isStrongReq(s,d);
+      if(!r) return;
+      // 必須(strong)は条件を満たす限り確定。できれば(soft)は同様だが後で上書き可能フラグを立てる
+      if(r==='night' && eligibleNightWithNg(s,d,dayAssign)){
+        dayAssign[s.id]={type:'night',leader:false,softReq:!strong};
+      } else if(r==='late' && req.late>0 && eligibleLate(s,d)){
+        dayAssign[s.id]={type:'late',softReq:!strong};
+      } else if(r==='late2' && eligibleDay(s,d)){
+        dayAssign[s.id]={type:'late2',softReq:!strong};
+      } else if(r==='day' && eligibleDayWithNg(s,d,dayAssign)){
+        dayAssign[s.id]={type:'day',softReq:!strong};
+      } else if(r==='off'){
+        // 必須休み希望はすぐに確定（eligibility不問）
+        if(strong) dayAssign[s.id]={type:'restWish',softReq:false};
+        // できれば休みはPhase5で処理
+      }
     });
-    // Phase3: 夜勤充足
+    // Phase3: 夜勤充足（softReqの日勤をNG確認しつつ必要なら夜勤へ振り替え）
     let nightList = STAFF.filter(s=>dayAssign[s.id] && dayAssign[s.id].type==='night');
     let nightNeeded = req.night - nightList.length;
     if(nightNeeded>0){
-      let cands = STAFF.filter(s=>!dayAssign[s.id] && eligibleNight(s,d));
+      // softReq付きの非夜勤アサインをキャンセルして候補に戻す
+      STAFF.filter(s=>dayAssign[s.id]?.softReq && dayAssign[s.id]?.type!=='night' && eligibleNight(s,d))
+        .forEach(s=>{ if(nightNeeded>0 && canAddToNight(s,nightList,req.night,true) && !violatesNg(s.id,'night',dayAssign)){
+          delete dayAssign[s.id]; }});
+      let cands = STAFF.filter(s=>!dayAssign[s.id] && eligibleNightWithNg(s,d,dayAssign));
       cands.sort((a,b)=> (state[a.id].nightCount*100+teamNightCount[a.team]) - (state[b.id].nightCount*100+teamNightCount[b.team]));
       for(const s of cands){ if(nightNeeded<=0) break; if(!canAddToNight(s,nightList,req.night,true)) continue; nightList.push(s); dayAssign[s.id]={type:'night',leader:false}; nightNeeded--; }
       if(nightNeeded>0){
-        for(const s of cands){ if(nightNeeded<=0) break; if(dayAssign[s.id]) continue; if(!canAddToNight(s,nightList,req.night,false)) continue; nightList.push(s); dayAssign[s.id]={type:'night',leader:false}; nightNeeded--; }
+        // NGを一時無視して充足
+        let cands2 = STAFF.filter(s=>!dayAssign[s.id] && eligibleNight(s,d));
+        for(const s of cands2){ if(nightNeeded<=0) break; if(dayAssign[s.id]) continue; if(!canAddToNight(s,nightList,req.night,false)) continue; nightList.push(s); dayAssign[s.id]={type:'night',leader:false}; nightNeeded--; }
       }
       if(nightNeeded>0) warnings.push(`${d}日(${dowLabel(d)})：夜勤が${nightNeeded}名不足しています。`);
     }
@@ -1016,9 +1245,12 @@ function generateSchedule(){
       for(const s of cands){ if(lateNeeded<=0) break; lateList.push(s); dayAssign[s.id]={type:'late'}; lateNeeded--; }
       if(lateNeeded>0) warnings.push(`${d}日(${dowLabel(d)})：遅Bが${lateNeeded}名不足しています。`);
     }
-    // Phase5: 残りの人を分類
-    let pool = STAFF.filter(s=>!dayAssign[s.id]);
-    let forcedRest = pool.filter(s=> state[s.id].consec>=5 || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d) || state[s.id].prevType==='rest' || state[s.id].prevType==='late');
+    // Phase5: 残りの人を分類（必須休み希望はforcedRest扱い）
+    let pool = STAFF.filter(s=>!dayAssign[s.id] && dayAssign[s.id]?.type!=='restWish');
+    // restWish（必須休み希望）をforcedRestに追加
+    const restWishStaff = STAFF.filter(s=>dayAssign[s.id]?.type==='restWish');
+    restWishStaff.forEach(s=>{ delete dayAssign[s.id]; pool.push(s); });
+    let forcedRest = pool.filter(s=> state[s.id].consec>=5 || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d) || state[s.id].prevType==='rest' || state[s.id].prevType==='late' || restWishStaff.includes(s));
     let remaining = pool.filter(s=> !forcedRest.includes(s));
     let lockedWorkers = remaining.filter(s=> s.weekendOff && reqOf(s,d)!=='off');
     lockedWorkers.forEach(s=>{ dayAssign[s.id] = {type:'day'}; });
@@ -1314,8 +1546,30 @@ function renderSummary(state){
   });
   t.innerHTML = html;
 }
+function scoreWarnings(w){
+  // lower is better: weight critical warnings more heavily
+  let s = 0;
+  w.forEach(x=>{ if(x.startsWith('🚨')) s+=10; else if(x.startsWith('⚠️')) s+=3; else s+=1; });
+  return s;
+}
 function runGeneration(){
-  const state = generateSchedule();
+  const MAX_TRIES = 5;
+  let bestSchedule = null, bestState = null, bestWarnings = null, bestScore = Infinity;
+  for(let attempt=0; attempt<MAX_TRIES; attempt++){
+    const state = generateSchedule();
+    const w = [...warnings];
+    const sc = scoreWarnings(w);
+    if(sc < bestScore){
+      bestScore = sc;
+      bestSchedule = JSON.parse(JSON.stringify(schedule));
+      bestState = state;
+      bestWarnings = w;
+    }
+    if(bestScore === 0) break;
+  }
+  schedule = bestSchedule;
+  warnings = bestWarnings;
+  const state = bestState;
   lastGeneratedState = state;
   // 夜勤回数履歴を保存（3ヶ月連続ルール用）
   const DAYS = daysInMonth();
