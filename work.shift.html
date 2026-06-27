@@ -1597,7 +1597,7 @@ function generateSchedule(locks={}){
     const mandatoryUsed = kouUsed + shukuUsed;
     const mandatoryRequired = kouQuota + shukuQuota;
     if(mandatoryUsed < mandatoryRequired){
-      warnings.push(`${s.name}：公休・祝の合計${mandatoryRequired}日のうち${mandatoryUsed}日しか消化できませんでした（働く日が多すぎる可能性があります）。`);
+      warnings.push(`🚨 ${s.name}：公休・祝の合計${mandatoryRequired}日のうち${mandatoryUsed}日しか消化できませんでした（働く日が多すぎる可能性があります）。`);
     }
   });
   // 土日2連休チェック
@@ -1729,9 +1729,14 @@ function renderSummary(state){
   t.innerHTML = html;
 }
 function scoreWarnings(w){
-  // lower is better: weight critical warnings more heavily
+  // lower is better; mandatory-rest failures are top priority
   let s = 0;
-  w.forEach(x=>{ if(x.startsWith('🚨')) s+=10; else if(x.startsWith('⚠️')) s+=3; else s+=1; });
+  w.forEach(x=>{
+    if(x.includes('公休・祝の合計') && x.includes('しか消化できませんでした')) s+=100;
+    else if(x.startsWith('🚨')) s+=10;
+    else if(x.startsWith('⚠️')) s+=3;
+    else s+=1;
+  });
   return s;
 }
 function runGeneration(keepLocks=false){
