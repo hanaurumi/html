@@ -190,7 +190,9 @@
         <table class="staff-table" id="staffTable"></table>
       </div>
       <div class="actions">
-        <button class="btn" onclick="addNewStaff()">＋ 新しいスタッフを追加</button>
+        <button class="btn" onclick="addNewStaff('A')">＋ スタッフ追加（Aチーム）</button>
+        <button class="btn" onclick="addNewStaff('B')">＋ スタッフ追加（Bチーム）</button>
+        <button class="btn secondary" onclick="addHeadNurse()">＋ 師長を追加</button>
         <button class="btn secondary" onclick="saveStaffOverrides()">スタッフ設定を保存</button>
         <span class="save-status" id="staffSaveStatus"></span>
       </div>
@@ -785,9 +787,15 @@ function sortAndRerenderStaff(){
   saveStaffData();
   renderStaffTable();
 }
-function addNewStaff(){
+function addHeadNurse(){
   const id = nextStaffId();
-  ALL_STAFF.push({id, name:'新しいスタッフ', role:'スタッフ', exp:'general', deptExp:null, leader:false, actingChief:false, night:true, lateB:true, shortTime:null, weekendOff:false, weekendNightUnlocked:false, nenkyuExtra:0, team:'A', active:true});
+  ALL_STAFF.push({id, name:'師長', role:'師長', exp:'general', deptExp:null, leader:false, actingChief:false, night:false, lateB:false, shortTime:null, weekendOff:true, weekendNightUnlocked:false, nenkyuExtra:0, team:'A', active:true});
+  sortStaff(); rebuildStaffMap(); saveStaffData();
+  renderStaffTable(); renderNgStaffSelects(); renderNgList(); renderNightOnlySelect(); renderRequestGrid(); renderPrevCarryoverTable();
+}
+function addNewStaff(team='A'){
+  const id = nextStaffId();
+  ALL_STAFF.push({id, name:'新しいスタッフ', role:'スタッフ', exp:'general', deptExp:null, leader:false, actingChief:false, night:true, lateB:true, shortTime:null, weekendOff:false, weekendNightUnlocked:false, nenkyuExtra:0, team, active:true});
   sortStaff();
   rebuildStaffMap();
   saveStaffData();
