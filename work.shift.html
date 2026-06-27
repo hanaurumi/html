@@ -1460,20 +1460,18 @@ function generateSchedule(){
     if(N < mandatoryTotal){
       warnings.push(`${s.name}：今月の休みが${N}日しかなく、公休・祝の合計${mandatoryTotal}日分を確保できませんでした（必要人数が多すぎる可能性があります）。`);
     }
-    // 祝日→祝、土日→公、平日は公休クォータ消化後に年休→それ以外は公
+    // ラベル付けルール：
+    //   公休・祝クォータ合計(mandatoryTotal)を先に消化 → その後の余剰分が年休（上限あり）
+    //   祝日当日→祝、土日当日→公、平日はクォータ未達なら公、達したら年休
     const effectiveNenkyuCap = nenkyuCapDefault + nenkyuExtra(s);
-    // 先に土日・祝日に何日休むかを数えて、公休クォータの残りを計算
-    const weekendRestCount = restDays.filter(d=>isWeekend(d)).length;
-    const holidayRestCount = restDays.filter(d=>isHoliday(d)).length;
-    let kouLeft = Math.max(0, kouQuota - weekendRestCount); // 土日だけでは埋まらない公休の残り
-    let nenkyuLeft = Math.max(0, N - mandatoryTotal - Math.max(0, kouQuota - weekendRestCount));
-    if(nenkyuLeft > effectiveNenkyuCap) nenkyuLeft = effectiveNenkyuCap;
+    let mandatoryLeft = mandatoryTotal; // 公+祝クォータの残り（合算）
+    let nenkyuLeft = Math.min(Math.max(0, N - mandatoryTotal), effectiveNenkyuCap);
     restDays.forEach(d=>{
       let label;
-      if(isHoliday(d)){ label='祝'; }
-      else if(isWeekend(d)){ label='公'; }
-      else if(kouLeft>0){ label='公'; kouLeft--; } // 公休クォータ未達なら平日も公休
-      else if(nenkyuLeft>0){ label='年休'; nenkyuLeft--; }
+      if(isHoliday(d) && mandatoryLeft>0){ label='祝'; mandatoryLeft--; }
+      else if(isWeekend(d) && mandatoryLeft>0){ label='公'; mandatoryLeft--; }
+      else if(mandatoryLeft>0){ label='公'; mandatoryLeft--; } // 平日でもクォータ未達なら公
+      else if(nenkyuLeft>0){ label='年休'; nenkyuLeft--; }    // クォータ消化後に年休
       else { label='公'; }
       schedule[s.id][d] = {type:label, leader:false};
       if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
@@ -1500,8 +1498,10 @@ function generateSchedule(){
     if(s.weekendOff) return;
     let kouUsed=0, shukuUsed=0;
     for(let d=1; d<=DAYS; d++){ const t=schedule[s.id][d].type; if(t==='公')kouUsed++; else if(t==='祝')shukuUsed++; }
-    if(kouUsed<kouQuota || shukuUsed<shukuQuota){
-      warnings.push(`${s.name}：公休${kouQuota-kouUsed}日・祝${shukuQuota-shukuUsed}日分が消化できずに残っています（働く日が多くなりすぎた可能性があります）。`);
+    const mandatoryUsed = kouUsed + shukuUsed;
+    const mandatoryRequired = kouQuota + shukuQuota;
+    if(mandatoryUsed < mandatoryRequired){
+      warnings.push(`${s.name}：公休・祝の合計${mandatoryRequired}日のうち${mandatoryUsed}日しか消化できませんでした（働く日が多すぎる可能性があります）。`);
     }
   });
   // 土日2連休チェック
