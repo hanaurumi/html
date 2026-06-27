@@ -621,7 +621,7 @@ function renderPeriodLabel(){
 }
 /* ===================== UI: 基本設定タブ ===================== */
 const PATTERN_OPTIONS = [['A','4人夜勤（遅Bなし）'],['B','3人夜勤+遅B1人'],['C','3人夜勤・遅Bなし']];
-const WEEKDAY_PATTERN_OPTIONS = PATTERN_OPTIONS.filter(([v])=>v!=='C');
+const WEEKDAY_PATTERN_OPTIONS = PATTERN_OPTIONS; // A: 4夜勤, B: 3夜勤+遅B, C: 3夜勤のみ
 const WEEKEND_PATTERN_OPTIONS = PATTERN_OPTIONS.filter(([v])=>v!=='A');
 function renderWeekdayPatternGrid(){
   const grid = document.getElementById('weekdayPatternGrid');
@@ -1100,6 +1100,7 @@ function generateSchedule(locks={}){
     state[s.id] = {nightCount:0, lateCount:0, consec: co.consec||0, prevType: co.lastShift||null, workCount:0,
                    kouRemaining:kouQuota, shukuRemaining:shukuQuota, otherCount:0,
                    nightStreak:0, forcedRestDaysLeft: co.lastShift==='night' ? 0 : 0,
+                   mandatoryRestTaken: 0, // 公+祝クォータ消化用カウンター
                    virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota+nenkyuMinDefault) : Math.max(avgTotalRestPerRegular, kouQuota+shukuQuota+nenkyuMinDefault)};
     // 前月末が夜勤 → 1日目は明けになるのでPhase1で処理される（prevType='night'をセット済み）
     // 前月末が明け → 1日目は公休にする（prevType='rest'をセット済み）
@@ -1226,6 +1227,14 @@ function generateSchedule(locks={}){
     STAFF.forEach(s=>{
       if(state[s.id].prevType==='night') dayAssign[s.id] = {type:'rest'};
     });
+    // Phase1.5: 必須休み強制（残り日数 ≤ 残り必須休み日数のスタッフは今日必ず休み）
+    STAFF.filter(s=>!dayAssign[s.id] && !s.weekendOff && s.id!==nightOnlyId).forEach(s=>{
+      const st = state[s.id];
+      const mandatoryLeft = (kouQuota + shukuQuota) - st.mandatoryRestTaken;
+      if(mandatoryLeft > 0 && mandatoryLeft >= daysRemaining){
+        dayAssign[s.id] = {type:'restPending'};
+      }
+    });
     // Phase2: 勤務希望の反映（必須希望を先に処理）
     STAFF.filter(s=>!dayAssign[s.id]).forEach(s=>{
       const r = reqOf(s,d);
@@ -1337,8 +1346,10 @@ function generateSchedule(locks={}){
     let wishRest = remaining.filter(s=> reqOf(s,d)==='off');
     let flexible = remaining.filter(s=> reqOf(s,d)!=='off');
     let actualRestWish = wishRest;
-    // Phase7: 日勤充足
-    let dayList = STAFF.filter(s=>dayAssign[s.id] && dayAssign[s.id].type==='day');
+    // Phase7: 日勤充足（月・火・金は遅番を日勤として合算）
+    const lateAsDayDow = [1,2,5]; // 月・火・金
+    const lateCountsAsDay = lateAsDayDow.includes(getDow(d));
+    let dayList = STAFF.filter(s=>dayAssign[s.id] && (dayAssign[s.id].type==='day' || (lateCountsAsDay && dayAssign[s.id].type==='late')));
     let dayNeeded = req.day - dayList.length;
     let flexA = flexible.filter(s=>s.team==='A').sort((a,b)=> restSortKey(a,daysRemaining)-restSortKey(b,daysRemaining));
     let flexB = flexible.filter(s=>s.team==='B').sort((a,b)=> restSortKey(a,daysRemaining)-restSortKey(b,daysRemaining));
@@ -1459,6 +1470,7 @@ function generateSchedule(locks={}){
       }
       else {
         st.consec=0; st.prevType=a.type; st.virtualRemaining--;
+        if(!a.locked) st.mandatoryRestTaken++; // ロック外の休み日カウント
         if(s.id===nightOnlyId){ st.nightStreak=0; }
       }
     });
@@ -1523,7 +1535,10 @@ function generateSchedule(locks={}){
   // 年休最低保証の後処理
   // 優先順位：公休数・日勤/夜勤最低人数 > 年休最低保証
   // 人数が確保できない日は年休を付与しない（スキップ）
-  function dayShiftCount(d){ return STAFF.filter(s=>schedule[s.id][d]?.type==='day').length; }
+  function dayShiftCount(d){
+    const includeLate = [1,2,5].includes(getDow(d)); // 月・火・金は遅番も日勤として合算
+    return STAFF.filter(s=>{ const t=schedule[s.id][d]?.type; return t==='day'||(includeLate&&t==='late'); }).length;
+  }
   function nightShiftCount(d){ return STAFF.filter(s=>schedule[s.id][d]?.type==='night').length; }
   function canGiveNenkyuOnDay(s, d){
     // 公休・祝日は変更しない（公休数の保護）
@@ -1597,7 +1612,7 @@ function generateSchedule(locks={}){
     const mandatoryUsed = kouUsed + shukuUsed;
     const mandatoryRequired = kouQuota + shukuQuota;
     if(mandatoryUsed < mandatoryRequired){
-      warnings.push(`${s.name}：公休・祝の合計${mandatoryRequired}日のうち${mandatoryUsed}日しか消化できませんでした（働く日が多すぎる可能性があります）。`);
+      warnings.push(`🚨 ${s.name}：公休・祝の合計${mandatoryRequired}日のうち${mandatoryUsed}日しか消化できませんでした（働く日が多すぎる可能性があります）。`);
     }
   });
   // 土日2連休チェック
@@ -1729,9 +1744,14 @@ function renderSummary(state){
   t.innerHTML = html;
 }
 function scoreWarnings(w){
-  // lower is better: weight critical warnings more heavily
+  // lower is better; mandatory-rest failures are top priority
   let s = 0;
-  w.forEach(x=>{ if(x.startsWith('🚨')) s+=10; else if(x.startsWith('⚠️')) s+=3; else s+=1; });
+  w.forEach(x=>{
+    if(x.includes('公休・祝の合計') && x.includes('しか消化できませんでした')) s+=100;
+    else if(x.startsWith('🚨')) s+=10;
+    else if(x.startsWith('⚠️')) s+=3;
+    else s+=1;
+  });
   return s;
 }
 function runGeneration(keepLocks=false){
