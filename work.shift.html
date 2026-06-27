@@ -902,7 +902,7 @@ function toggleStrength(staffId, day){
 /* ─── NG条件 ─── */
 const NG_TYPE_LABELS = {same_night:'同日夜勤NG', same_day:'同日日勤NG', same_shift:'同日全勤務NG'};
 function renderNgStaffSelects(){
-  const staff = getActiveStaff();
+  const staff = getActiveStaff().filter(s=>!isHeadNurse(s));
   ['ngStaff1','ngStaff2'].forEach(id=>{
     const sel = document.getElementById(id);
     if(!sel) return;
