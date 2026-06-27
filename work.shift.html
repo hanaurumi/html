@@ -10,7 +10,7 @@
   :root{
     --bg:#F7F8FA; --surface:#FFFFFF; --text:#1E2A38; --muted:#6B7785;
     --accent:#2C5F6F; --accent-light:#E4EEF0;
-    --night:#2C3E50; --late:#B7791F; --late2:#7B6AF0; --day:#EAF4F4; --kou:#F0F0F0; --shuku:#FBE3E3; --rest:#E3E7EA; --other:#E8E4F5; --toku:#D6EAF8; --natsu:#D4EDDA;
+    --night:#2C3E50; --late:#B7791F; --late2:#7B6AF0; --day:#EAF4F4; --kou:#F0F0F0; --shuku:#FBE3E3; --rest:#E3E7EA; --other:#E8E4F5; --toku:#D6EAF8; --natsu:#D4EDDA; --kai:#FFF0CC;
     --warn-bg:#FDECEC; --warn-text:#B23B3B; --leader:#C9971C; --border:#DCE2E6;
   }
   *{box-sizing:border-box;}
@@ -50,6 +50,7 @@
   .cell-年休{background:var(--other);color:#5B4B8A;}
   .cell-特{background:var(--toku);color:#1B5E8C;}
   .cell-夏{background:var(--natsu);color:#1A5C34;font-weight:bold;}
+  .cell-開{background:var(--kai);color:#8B6914;font-weight:bold;}
   .leader-star{color:var(--leader);margin-left:2px;}
   .chief-mark{color:#1A6B3C;margin-left:2px;font-size:10px;}
   button.btn{background:var(--accent);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
@@ -515,6 +516,7 @@ const STAFF_KEY = 'ward-app-staff';
 const NIGHT_HISTORY_KEY = 'ward-app-night-history';
 const NATSU_HISTORY_KEY = 'ward-app-natsu-history';
 const NATSU_ANNUAL_MAX = 5;
+const KAI_HISTORY_KEY = 'ward-app-kai-history';
 const GDRIVE_CLIENT_ID_KEY = 'ward-app-gdrive-client-id';
 const lsGet = (key) => { try{ return localStorage.getItem(key); }catch(e){ return null; } };
 const lsSet = (key, val) => { try{ localStorage.setItem(key, val); }catch(e){} };
@@ -855,7 +857,7 @@ function saveStaffOverrides(){
   document.getElementById('staffSaveStatus').textContent = '保存しました';
 }
 /* ===================== UI: 希望入力グリッド ===================== */
-const REQUEST_OPTIONS = [['','指定なし'],['night','夜勤希望'],['late','遅B希望'],['late2','遅希望（委員会等）'],['day','日勤希望'],['off','休み希望'],['夏','夏季休暇']];
+const REQUEST_OPTIONS = [['','指定なし'],['night','夜勤希望'],['late','遅B希望'],['late2','遅希望（委員会等）'],['day','日勤希望'],['off','休み希望'],['夏','夏季休暇'],['開','開院記念日']];
 function renderRequestGrid(){
   const t = document.getElementById('requestGrid');
   const dim = daysInMonth();
@@ -1090,6 +1092,23 @@ function natsuUsedThisYear(s){
   return (hist[s.id]||[]).filter(r=>r.year===currentYear && r.month!==currentMonth)
     .reduce((sum,r)=>sum+r.count, 0);
 }
+function loadKaiHistory(){ try{ return JSON.parse(lsGet(KAI_HISTORY_KEY)||'{}'); }catch(e){ return {}; } }
+function saveKaiHistory(kaiCounts){
+  const hist = loadKaiHistory();
+  Object.entries(kaiCounts).forEach(([id, count])=>{
+    if(!hist[id]) hist[id] = [];
+    hist[id] = hist[id].filter(r=> !(r.year===currentYear && r.month===currentMonth));
+    if(count > 0) hist[id].push({year:currentYear, month:currentMonth, count});
+    hist[id] = hist[id].slice(-12);
+  });
+  lsSet(KAI_HISTORY_KEY, JSON.stringify(hist));
+}
+function kaiTakenThisYear(s){
+  // 今年（今月含む）の開院記念日取得日数
+  const hist = loadKaiHistory();
+  return (hist[s.id]||[]).filter(r=>r.year===currentYear)
+    .reduce((sum,r)=>sum+r.count, 0);
+}
 const LATE_CAP = 3;
 function isJunior(s){ return s.exp==='1st'||s.exp==='2nd'; }
 function generateSchedule(locks={}){
@@ -1282,6 +1301,9 @@ function generateSchedule(locks={}){
         }
         // 上限超えの場合は休み希望として処理
         else { if(strong) dayAssign[s.id]={type:'restWish',softReq:false}; }
+      } else if(r==='開'){
+        // 開院記念日：年1回取得義務。年休と同様に公休クォートとは別カウント
+        dayAssign[s.id]={type:'開'};
       }
     });
     // Phase3: 夜勤充足（softReqの日勤をNG確認しつつ必要なら夜勤へ振り替え）
@@ -1501,6 +1523,11 @@ function generateSchedule(locks={}){
         // 夏季休暇：公休クォータとは別（virtualRemaining・mandatoryRestTaken に影響しない）
         st.consec=0; st.prevType='夏';
       }
+      else if(a.type==='開'){
+        // 開院記念日：年休と同様に otherCount にカウント、公休クォートとは別
+        st.consec=0; st.prevType='開'; st.otherCount++; teamOtherCount[s.team]++;
+        st.virtualRemaining--; // 月の休みとして消費
+      }
       else {
         st.consec=0; st.prevType=a.type; st.virtualRemaining--;
         if(!a.locked) st.mandatoryRestTaken++; // ロック外の休み日カウント
@@ -1675,6 +1702,7 @@ function cellClass(type){
   if(type==='年休') return 'cell-年休';
   if(type==='特') return 'cell-特';
   if(type==='夏') return 'cell-夏';
+  if(type==='開') return 'cell-開';
   return 'cell-公';
 }
 function cellLabel(type){
@@ -1684,7 +1712,7 @@ function cellLabel(type){
   if(type==='rest') return '明';
   return type;
 }
-const EDIT_OPTIONS = [['night','夜'],['late','遅B'],['late2','遅'],['day','日'],['rest','明'],['公','公'],['祝','祝'],['年休','年休'],['特','特'],['夏','夏']];
+const EDIT_OPTIONS = [['night','夜'],['late','遅B'],['late2','遅'],['day','日'],['rest','明'],['公','公'],['祝','祝'],['年休','年休'],['特','特'],['夏','夏'],['開','開']];
 function renderResultGrid(){
   const t = document.getElementById('resultGrid');
   const dim = daysInMonth();
@@ -1757,13 +1785,13 @@ function renderSummary(state){
   const dim = daysInMonth();
   const {kou:kouQ, shuku:shukuQ} = computeQuotas();
   const mandQ = kouQ + shukuQ;
-  let html = `<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>遅</th><th>日勤</th><th>明け</th><th title="公休+祝日の合計（月間必須休み${mandQ}日）">公+祝<br><small style="font-weight:normal;color:#888">必須${mandQ}日</small></th><th title="夏季休暇（年間5日上限）">夏季</th></tr>`;
+  let html = `<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>遅</th><th>日勤</th><th>明け</th><th title="公休+祝日の合計（月間必須休み${mandQ}日）">公+祝<br><small style="font-weight:normal;color:#888">必須${mandQ}日</small></th><th title="夏季休暇（年間5日上限）">夏季</th><th title="開院記念日（年1回義務）">開院</th></tr>`;
   getActiveStaff().forEach(s=>{
-    let night=0,late=0,late2=0,day=0, kou=0, shuku=0, rest=0, other=0, toku=0, natsu=0;
+    let night=0,late=0,late2=0,day=0, kou=0, shuku=0, rest=0, other=0, toku=0, natsu=0, kai=0;
     for(let d=1; d<=dim; d++){
       const t2=schedule[s.id][d].type;
       if(t2==='公') kou++; else if(t2==='祝') shuku++; else if(t2==='rest') rest++; else if(t2==='年休') other++; else if(t2==='特') toku++;
-      else if(t2==='夏') natsu++;
+      else if(t2==='夏') natsu++; else if(t2==='開') kai++;
       else if(t2==='night') night++; else if(t2==='late') late++; else if(t2==='late2') late2++; else if(t2==='day') day++;
     }
     const mandActual = kou + shuku;
@@ -1775,6 +1803,7 @@ function renderSummary(state){
       <td class="num">${rest}</td>
       <td class="num" style="${mandColor}">${mandActual}</td>
       <td class="num" style="${natsu>0?'color:#1A5C34;font-weight:bold;':''}">${natsu||''}</td>
+      <td class="num" style="${kai>0?'color:#8B6914;font-weight:bold;':''}">${kai||''}</td>
     </tr>`;
   });
   t.innerHTML = html;
@@ -1821,6 +1850,21 @@ function runGeneration(keepLocks=false){
       warnings.push(`⚠️ ${s.name}：夏季休暇の年間合計が${usedPrev+n}日となり上限（${NATSU_ANNUAL_MAX}日）を超えています。`);
   });
   saveNatsuHistory(natsuCounts);
+  // 開院記念日履歴を保存・年1回取得義務チェック
+  const kaiCounts = {};
+  getActiveStaff().forEach(s=>{
+    let n=0;
+    for(let d=1;d<=DAYS;d++) if(schedule[s.id][d]?.type==='開') n++;
+    kaiCounts[s.id] = n;
+  });
+  saveKaiHistory(kaiCounts);
+  // 12月末時点で未取得なら警告（年内最終月の生成時）
+  if(currentMonth===12){
+    getActiveStaff().forEach(s=>{
+      const total = kaiTakenThisYear(s);
+      if(total===0) warnings.push(`⚠️ ${s.name}：今年度の開院記念日休暇がまだ取得されていません（年1回取得義務）。`);
+    });
+  }
   // 夜勤回数履歴を保存（3ヶ月連続ルール用）
   const DAYS = daysInMonth();
   const nightCounts = {};
