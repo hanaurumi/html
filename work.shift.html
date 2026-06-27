@@ -1337,8 +1337,10 @@ function generateSchedule(locks={}){
     let wishRest = remaining.filter(s=> reqOf(s,d)==='off');
     let flexible = remaining.filter(s=> reqOf(s,d)!=='off');
     let actualRestWish = wishRest;
-    // Phase7: 日勤充足
-    let dayList = STAFF.filter(s=>dayAssign[s.id] && dayAssign[s.id].type==='day');
+    // Phase7: 日勤充足（月・火・金は遅番を日勤として合算）
+    const lateAsDayDow = [1,2,5]; // 月・火・金
+    const lateCountsAsDay = lateAsDayDow.includes(getDow(d));
+    let dayList = STAFF.filter(s=>dayAssign[s.id] && (dayAssign[s.id].type==='day' || (lateCountsAsDay && dayAssign[s.id].type==='late')));
     let dayNeeded = req.day - dayList.length;
     let flexA = flexible.filter(s=>s.team==='A').sort((a,b)=> restSortKey(a,daysRemaining)-restSortKey(b,daysRemaining));
     let flexB = flexible.filter(s=>s.team==='B').sort((a,b)=> restSortKey(a,daysRemaining)-restSortKey(b,daysRemaining));
@@ -1523,7 +1525,10 @@ function generateSchedule(locks={}){
   // 年休最低保証の後処理
   // 優先順位：公休数・日勤/夜勤最低人数 > 年休最低保証
   // 人数が確保できない日は年休を付与しない（スキップ）
-  function dayShiftCount(d){ return STAFF.filter(s=>schedule[s.id][d]?.type==='day').length; }
+  function dayShiftCount(d){
+    const includeLate = [1,2,5].includes(getDow(d)); // 月・火・金は遅番も日勤として合算
+    return STAFF.filter(s=>{ const t=schedule[s.id][d]?.type; return t==='day'||(includeLate&&t==='late'); }).length;
+  }
   function nightShiftCount(d){ return STAFF.filter(s=>schedule[s.id][d]?.type==='night').length; }
   function canGiveNenkyuOnDay(s, d){
     // 公休・祝日は変更しない（公休数の保護）
