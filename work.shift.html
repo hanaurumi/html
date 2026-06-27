@@ -1505,19 +1505,36 @@ function generateSchedule(){
     });
   }
   // 年休最低保証の後処理
-  // 通常スタッフ：年休が nenkyuMinDefault 未満なら平日の公休を年休に再ラベル
-  // 時短スタッフ：restPending が残っていれば年休として確定（平日も含む）
+  // 優先順位：公休数・日勤/夜勤最低人数 > 年休最低保証
+  // 人数が確保できない日は年休を付与しない（スキップ）
+  function dayShiftCount(d){ return STAFF.filter(s=>schedule[s.id][d]?.type==='day').length; }
+  function nightShiftCount(d){ return STAFF.filter(s=>schedule[s.id][d]?.type==='night').length; }
+  function canGiveNenkyuOnDay(s, d){
+    // 公休・祝日は変更しない（公休数の保護）
+    const t = schedule[s.id][d]?.type;
+    if(!t) return false;
+    if(isWeekend(d) || isHoliday(d)) return false; // 土日祝は公休として保護
+    // 日勤スタッフが休む場合、日勤最低人数を確認
+    if(t==='day' || t==='restPending'){
+      const req = requiredCounts(d);
+      const curDay = dayShiftCount(d);
+      const curNight = nightShiftCount(d);
+      if(t==='day' && curDay <= req.day) return false; // 日勤最低人数を割る
+      if(t==='restPending') return true; // restPendingなら元々非日勤なのでOK
+    }
+    return true;
+  }
   STAFF.filter(s=>s.id!==nightOnlyId).forEach(s=>{
     const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
     const effectiveMin = Math.min(nenkyuMinDefault, effectiveCap);
     if(effectiveMin <= 0) return;
     if(s.weekendOff){
-      // 時短スタッフ：平日の restPending → 年休（最低保証分）
+      // 時短スタッフ：平日の restPending → 年休（日勤・公休に影響しない場合のみ）
       let nenkyuCount = 0;
       for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') nenkyuCount++; }
       for(let d=1; d<=DAYS; d++){
         if(nenkyuCount >= effectiveMin) break;
-        if(schedule[s.id][d]?.type==='restPending'){
+        if(schedule[s.id][d]?.type==='restPending' && canGiveNenkyuOnDay(s, d)){
           schedule[s.id][d] = {type:'年休', leader:false};
           state[s.id].otherCount++;
           teamOtherCount[s.team]++;
@@ -1532,13 +1549,14 @@ function generateSchedule(){
         }
       }
     } else {
-      // 通常スタッフ：年休が足りなければ平日の公休を年休に再ラベル
+      // 通常スタッフ：年休が足りなければ平日の公休を年休に再ラベル（ラベル変更のみ＝人数は不変）
       let nenkyuCount = 0;
       for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') nenkyuCount++; }
       if(nenkyuCount < effectiveMin){
         for(let d=1; d<=DAYS; d++){
           if(nenkyuCount >= effectiveMin) break;
           const t = schedule[s.id][d]?.type;
+          // 平日の公休を年休に再ラベル（既に休みなので人数には影響なし）
           if(t==='公' && !isWeekend(d) && !isHoliday(d)){
             schedule[s.id][d] = {type:'年休', leader:false};
             state[s.id].otherCount++;
