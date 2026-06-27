@@ -1541,6 +1541,12 @@ function generateSchedule(locks={}){
     const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
     const effectiveMin = Math.min(nenkyuMinDefault, effectiveCap);
     if(effectiveMin <= 0) return;
+    // 必須休み（公+祝）が消化できていない場合は年休最低保証を適用しない
+    if(!s.weekendOff){
+      let mandUsed=0;
+      for(let d=1;d<=DAYS;d++){ const t=schedule[s.id][d]?.type; if(t==='公'||t==='祝') mandUsed++; }
+      if(mandUsed < kouQuota + shukuQuota) return;
+    }
     if(s.weekendOff){
       // 時短スタッフ：平日の restPending → 年休（日勤・公休に影響しない場合のみ）
       let nenkyuCount = 0;
