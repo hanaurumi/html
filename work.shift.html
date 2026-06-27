@@ -920,7 +920,7 @@ function generateSchedule(){
         dayAssign[cand.id] = {type:'night', leader:false};
       }
     })();
-    // ---- 条件2-A: 夜勤リーダーは2名以上いるチームから選ぶ ----
+    // ---- 条件2-A: 夜勤リーダー1名。人数の多い方のチーム（2名以上）から優先指名、A・B両方に置く必要はない ----
     if(nightList.length>0 && !nightList.some(s=>s.leader)){
       const removable = nightList.filter(s=>!s.leader && s.id!==nightOnlyId).sort((a,b)=> state[b.id].nightCount-state[a.id].nightCount)[0];
       const cand = STAFF.find(s=> !dayAssign[s.id] && s.leader && eligibleNight(s,d) &&
@@ -1354,7 +1354,7 @@ function generateDefaultRulesHtml(){
   <p><strong>【チームバランス（固定ルール）】</strong></p>
   <ul>
     <li>夜勤メンバーが全員同一チームにならないよう調整する（4人夜勤でもA4:B0・B4:A0は不可）</li>
-    <li>リーダーは必ず2名以上いるチームから選ぶ（夜勤・日勤ともに）</li>
+    <li>リーダー選出はチーム人数が2名以上の側を優先（夜勤・日勤ともに）。日勤はA・B両チームへの配置が目標だが、夜勤はリーダー1名のみ（A・B両方に置く必要はない）。</li>
     <li>平日の日勤には師長または師長代行（②スタッフタブで「師長代行可否」にチェックした人）を必ず1名確保する。土日祝日は不要（リーダーのみ）</li>
   </ul>
   <p><strong>【人数配置（現在の設定値）】</strong></p>
@@ -1363,7 +1363,7 @@ function generateDefaultRulesHtml(){
     <li>平日の夜勤体制：①基本設定タブの「曜日ごとの夜勤パターン」で変更可（A=4人夜勤(遅Bなし)、B=3人夜勤+遅B1人）</li>
     <li>日勤の必要人数：平日${weekdayDayMin}名以上、土日祝日${weekendDayMin}名以上（①基本設定タブで変更可）</li>
     <li>日勤のリーダー人数：平日はAチーム・Bチームそれぞれ1名以上（チームに2名以上いる場合のみ）、土日祝日はチーム問わず1名以上</li>
-    <li>夜勤のリーダー：必ず1名配置（2名以上いるチームから優先して指名）</li>
+    <li>夜勤のリーダー：1名のみ配置。3人夜勤の場合、A・Bそれぞれにリーダーを置く必要はなく、人数の多い側のチーム（2名）から1名リーダーを出せば条件クリア。</li>
     <li>平日日勤の師長代行：②スタッフタブで「師長代行可否」をチェックした人を必ず1名確保。結果表では◆マークで表示</li>
   </ul>
   <p><strong>【個人の回数上限（固定）】</strong></p>
