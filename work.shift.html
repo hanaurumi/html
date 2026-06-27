@@ -955,7 +955,7 @@ function generateSchedule(){
     }
     // Phase5: 残りの人を分類
     let pool = STAFF.filter(s=>!dayAssign[s.id]);
-    let forcedRest = pool.filter(s=> state[s.id].consec>=5 || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d) || state[s.id].prevType==='rest');
+    let forcedRest = pool.filter(s=> state[s.id].consec>=5 || (s.weekendOff && isWeekendOrHoliday(d)) || isPlannedRestDay(s,d) || state[s.id].prevType==='rest' || state[s.id].prevType==='late');
     let remaining = pool.filter(s=> !forcedRest.includes(s));
     let lockedWorkers = remaining.filter(s=> s.weekendOff && reqOf(s,d)!=='off');
     lockedWorkers.forEach(s=>{ dayAssign[s.id] = {type:'day'}; });
