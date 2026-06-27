@@ -1460,14 +1460,19 @@ function generateSchedule(){
     if(N < mandatoryTotal){
       warnings.push(`${s.name}：今月の休みが${N}日しかなく、公休・祝の合計${mandatoryTotal}日分を確保できませんでした（必要人数が多すぎる可能性があります）。`);
     }
-    // 祝日→祝、土日→公、平日→年休（上限まで）→公 の順でラベル付け
-    let nenkyuLeft = Math.max(0, N - mandatoryTotal);
+    // 祝日→祝、土日→公、平日は公休クォータ消化後に年休→それ以外は公
     const effectiveNenkyuCap = nenkyuCapDefault + nenkyuExtra(s);
+    // 先に土日・祝日に何日休むかを数えて、公休クォータの残りを計算
+    const weekendRestCount = restDays.filter(d=>isWeekend(d)).length;
+    const holidayRestCount = restDays.filter(d=>isHoliday(d)).length;
+    let kouLeft = Math.max(0, kouQuota - weekendRestCount); // 土日だけでは埋まらない公休の残り
+    let nenkyuLeft = Math.max(0, N - mandatoryTotal - Math.max(0, kouQuota - weekendRestCount));
     if(nenkyuLeft > effectiveNenkyuCap) nenkyuLeft = effectiveNenkyuCap;
     restDays.forEach(d=>{
       let label;
       if(isHoliday(d)){ label='祝'; }
       else if(isWeekend(d)){ label='公'; }
+      else if(kouLeft>0){ label='公'; kouLeft--; } // 公休クォータ未達なら平日も公休
       else if(nenkyuLeft>0){ label='年休'; nenkyuLeft--; }
       else { label='公'; }
       schedule[s.id][d] = {type:label, leader:false};
@@ -1759,6 +1764,7 @@ function generateDefaultRulesHtml(){
     <li>休みのラベルは実際の日付タイプで決定：祝日 → 祝、土日 → 公、平日の余剰休み → 年休</li>
     <li>土日・祝日の休みは人員不足でも日勤に変換しない（平日の余剰休みのみ日勤に振り替える）</li>
     <li>年休の上限：1人あたり月${nenkyuCapDefault}回（①基本設定タブで変更可）。上限を超える分は公休に振り替え</li>
+    <li>年休は公休クォータ（今月${kouQ}日）を全て消化してから付与する。土日だけで公休が埋まらない場合は平日の休みを先に公休として使う</li>
     <li>土日2連休は月1回、自動生成時にできるだけ確保するよう試みる</li>
   </ul>
   <p><strong>【勤務希望の反映ルール】</strong></p>
