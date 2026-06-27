@@ -157,9 +157,10 @@
         <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
       </div>
     </section>
+    <!-- Google Drive設定：構築完了後に有効化予定
     <section>
       <h2>Google Drive設定</h2>
-      <p class="note">勤務表をExcelとしてGoogle Driveに保存するには、Google Cloud ConsoleでOAuth 2.0クライアントIDを発行し、下に入力してください。<br>（発行手順：Google Cloud Console → APIとサービス → 認証情報 → OAuth 2.0クライアントID → ウェブアプリケーション → 承認済みJavaScript生成元にこのページのURLを追加）</p>
+      <p class="note">勤務表をExcelとしてGoogle Driveに保存するには、Google Cloud ConsoleでOAuth 2.0クライアントIDを発行し、下に入力してください。</p>
       <div class="field-row">
         <label>Google OAuth Client ID</label>
         <input type="text" id="gdriveClientIdInput" style="flex:1;font-size:12px;" placeholder="xxxxxxxx.apps.googleusercontent.com">
@@ -168,6 +169,7 @@
         <button class="btn" onclick="saveGDriveClientId()">Client IDを保存</button>
       </div>
     </section>
+    -->
     <section>
       <h2>カレンダーで個別の日を上書き</h2>
       <p class="note">祝日の自動判定がずれている場合や、特定の日だけ夜勤パターンを変えたい場合はここで上書きできます。</p>
@@ -1481,9 +1483,10 @@ function generateDefaultRulesHtml(){
   renderRequestGrid();
   renderNightOnlySelect();
   renderRules();
-  // Google Drive Client ID を復元
+  // Google Drive Client ID を復元（設定UI有効化後に使用）
   const savedClientId = lsGet(GDRIVE_CLIENT_ID_KEY);
-  if(savedClientId) document.getElementById('gdriveClientIdInput').value = savedClientId;
+  const clientIdInput = document.getElementById('gdriveClientIdInput');
+  if(savedClientId && clientIdInput) clientIdInput.value = savedClientId;
 })();
 function saveGDriveClientId(){
   const val = document.getElementById('gdriveClientIdInput').value.trim();
@@ -1502,7 +1505,8 @@ function saveGDriveClientId(){
     <div class="modal-preview" id="excelPreview"></div>
     <div id="driveStatus"></div>
     <div class="modal-actions">
-      <button class="btn" id="driveSaveBtn" onclick="saveExcelToDrive()">💾 Google Driveに保存</button>
+      <!-- Google Drive保存ボタン：構築完了後に有効化予定 -->
+      <!-- <button class="btn" id="driveSaveBtn" onclick="saveExcelToDrive()">💾 Google Driveに保存</button> -->
       <button class="btn secondary" onclick="closeExcelModal()">✕ 閉じる</button>
     </div>
   </div>
@@ -1597,18 +1601,9 @@ function openExcelModal(){
   _excelFilename = `勤務表_${currentYear}年${currentMonth}月.xlsx`;
   _excelBlob = generateExcelBlob();
   document.getElementById('excelModalMsg').textContent =
-    `${currentYear}年${currentMonth}月の勤務表 — 内容を確認してGoogle Driveに保存してください。`;
+    `${currentYear}年${currentMonth}月の勤務表`;
   document.getElementById('excelPreview').innerHTML = buildPreviewHtml();
   document.getElementById('driveStatus').textContent = '';
-  const clientId = getGDriveClientId();
-  const btn = document.getElementById('driveSaveBtn');
-  if(!clientId){
-    btn.disabled = true;
-    document.getElementById('driveStatus').innerHTML =
-      '⚠️ Google Drive保存にはClient IDが必要です。①設定タブの「Google Drive設定」で入力してください。';
-  } else {
-    btn.disabled = false;
-  }
   document.getElementById('excelModal').classList.add('active');
 }
 
