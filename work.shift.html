@@ -51,6 +51,7 @@
   .cell-特{background:var(--toku);color:#1B5E8C;}
   .cell-夏{background:var(--natsu);color:#1A5C34;font-weight:bold;}
   .cell-開{background:var(--kai);color:#8B6914;font-weight:bold;}
+  .cell-年休案{background:repeating-linear-gradient(135deg,#E8E4F5,#E8E4F5 4px,#f5f3fc 4px,#f5f3fc 8px);color:#9B8DC0;font-style:italic;}
   .leader-star{color:var(--leader);margin-left:2px;}
   .chief-mark{color:#1A6B3C;margin-left:2px;font-size:10px;}
   button.btn{background:var(--accent);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
@@ -292,7 +293,10 @@
         <span><span class="swatch" style="background:var(--rest)"></span>明け（夜勤翌日）</span>
         <span><span class="swatch" style="background:var(--kou)"></span>公休</span>
         <span><span class="swatch" style="background:var(--shuku)"></span>祝</span>
-        <span><span class="swatch" style="background:var(--other)"></span>年休（公休/祝の枠を超えた休み）</span>
+        <span><span class="swatch" style="background:var(--other)"></span>年休（希望確定）</span>
+        <span><span class="swatch" style="background:repeating-linear-gradient(135deg,#E8E4F5,#E8E4F5 4px,#f5f3fc 4px,#f5f3fc 8px)"></span>年休案（提案・斜線。手動で年休に確定可）</span>
+        <span><span class="swatch" style="background:var(--natsu)"></span>夏季休暇</span>
+        <span><span class="swatch" style="background:var(--kai)"></span>開院記念日</span>
         <span><span class="swatch" style="background:var(--toku)"></span>特（夜勤専従の特別休）</span>
         <span><span class="leader-star">★</span>その日のリーダー</span>
         <span><span class="chief-mark">◆</span>師長または師長代行（平日日勤のみ）</span>
@@ -1635,15 +1639,13 @@ function generateSchedule(locks={}){
       if(mandUsed < kouQuota + shukuQuota) return;
     }
     if(s.weekendOff){
-      // 時短スタッフ：平日の restPending → 年休（日勤・公休に影響しない場合のみ）
+      // 時短スタッフ：平日の restPending → 年休案（提案、確定は手動）
       let nenkyuCount = 0;
-      for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') nenkyuCount++; }
+      for(let d=1;d<=DAYS;d++){ const t=schedule[s.id][d]?.type; if(t==='年休'||t==='年休案') nenkyuCount++; }
       for(let d=1; d<=DAYS; d++){
         if(nenkyuCount >= effectiveMin) break;
         if(schedule[s.id][d]?.type==='restPending' && canGiveNenkyuOnDay(s, d)){
-          schedule[s.id][d] = {type:'年休', leader:false};
-          state[s.id].otherCount++;
-          teamOtherCount[s.team]++;
+          schedule[s.id][d] = {type:'年休案', leader:false, proposal:true};
           nenkyuCount++;
         }
       }
@@ -1655,18 +1657,15 @@ function generateSchedule(locks={}){
         }
       }
     } else {
-      // 通常スタッフ：年休が足りなければ平日の公休を年休に再ラベル（ラベル変更のみ＝人数は不変）
+      // 通常スタッフ：平日の公休を年休案に再ラベル（提案、確定は手動）
       let nenkyuCount = 0;
-      for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') nenkyuCount++; }
+      for(let d=1;d<=DAYS;d++){ const t=schedule[s.id][d]?.type; if(t==='年休'||t==='年休案') nenkyuCount++; }
       if(nenkyuCount < effectiveMin){
         for(let d=1; d<=DAYS; d++){
           if(nenkyuCount >= effectiveMin) break;
           const t = schedule[s.id][d]?.type;
-          // 平日の公休を年休に再ラベル（既に休みなので人数には影響なし）
           if(t==='公' && !isWeekend(d) && !isHoliday(d)){
-            schedule[s.id][d] = {type:'年休', leader:false};
-            state[s.id].otherCount++;
-            teamOtherCount[s.team]++;
+            schedule[s.id][d] = {type:'年休案', leader:false, proposal:true};
             nenkyuCount++;
           }
         }
@@ -1709,6 +1708,7 @@ function cellClass(type){
   if(type==='公') return 'cell-公';
   if(type==='祝') return 'cell-祝';
   if(type==='年休') return 'cell-年休';
+  if(type==='年休案') return 'cell-年休案';
   if(type==='特') return 'cell-特';
   if(type==='夏') return 'cell-夏';
   if(type==='開') return 'cell-開';
@@ -1721,7 +1721,7 @@ function cellLabel(type){
   if(type==='rest') return '明';
   return type;
 }
-const EDIT_OPTIONS = [['night','夜'],['late','遅B'],['late2','遅'],['day','日'],['rest','明'],['公','公'],['祝','祝'],['年休','年休'],['特','特'],['夏','夏'],['開','開']];
+const EDIT_OPTIONS = [['night','夜'],['late','遅B'],['late2','遅'],['day','日'],['rest','明'],['公','公'],['祝','祝'],['年休','年休'],['年休案','年休案'],['特','特'],['夏','夏'],['開','開']];
 function renderResultGrid(){
   const t = document.getElementById('resultGrid');
   const dim = daysInMonth();
@@ -1794,13 +1794,13 @@ function renderSummary(state){
   const dim = daysInMonth();
   const {kou:kouQ, shuku:shukuQ} = computeQuotas();
   const mandQ = kouQ + shukuQ;
-  let html = `<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>遅</th><th>日勤</th><th>明け</th><th title="公休+祝日の合計（月間必須休み${mandQ}日）">公+祝<br><small style="font-weight:normal;color:#888">必須${mandQ}日</small></th><th title="夏季休暇（年間5日上限）">夏季</th><th title="開院記念日（年1回義務）">開院</th></tr>`;
+  let html = `<tr><th>氏名</th><th>チーム</th><th>夜勤</th><th>遅B</th><th>遅</th><th>日勤</th><th>明け</th><th title="公休+祝日の合計（月間必須休み${mandQ}日）">公+祝<br><small style="font-weight:normal;color:#888">必須${mandQ}日</small></th><th>年休</th><th title="提案（斜線セル）。クリックで確定可">年休案</th><th title="夏季休暇（年間5日上限）">夏季</th><th title="開院記念日（年1回義務）">開院</th></tr>`;
   getActiveStaff().forEach(s=>{
-    let night=0,late=0,late2=0,day=0, kou=0, shuku=0, rest=0, other=0, toku=0, natsu=0, kai=0;
+    let night=0,late=0,late2=0,day=0, kou=0, shuku=0, rest=0, other=0, proposal=0, toku=0, natsu=0, kai=0;
     for(let d=1; d<=dim; d++){
       const t2=schedule[s.id][d].type;
-      if(t2==='公') kou++; else if(t2==='祝') shuku++; else if(t2==='rest') rest++; else if(t2==='年休') other++; else if(t2==='特') toku++;
-      else if(t2==='夏') natsu++; else if(t2==='開') kai++;
+      if(t2==='公') kou++; else if(t2==='祝') shuku++; else if(t2==='rest') rest++; else if(t2==='年休') other++; else if(t2==='年休案') proposal++;
+      else if(t2==='特') toku++; else if(t2==='夏') natsu++; else if(t2==='開') kai++;
       else if(t2==='night') night++; else if(t2==='late') late++; else if(t2==='late2') late2++; else if(t2==='day') day++;
     }
     const mandActual = kou + shuku;
@@ -1811,6 +1811,8 @@ function renderSummary(state){
       <td class="num">${night}</td><td class="num">${late}</td><td class="num">${late2||''}</td><td class="num">${day}</td>
       <td class="num">${rest}</td>
       <td class="num" style="${mandColor}">${mandActual}</td>
+      <td class="num">${other||''}</td>
+      <td class="num" style="${proposal>0?'color:#9B8DC0;font-style:italic;':''}">${proposal||''}</td>
       <td class="num" style="${natsu>0?'color:#1A5C34;font-weight:bold;':''}">${natsu||''}</td>
       <td class="num" style="${kai>0?'color:#8B6914;font-weight:bold;':''}">${kai||''}</td>
     </tr>`;
