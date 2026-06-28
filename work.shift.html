@@ -1517,6 +1517,7 @@ function generateSchedule(locks={}){
     STAFF.forEach(s=>{
       const a = dayAssign[s.id];
       const st = state[s.id];
+      if(!a){ schedule[s.id][d]={type:'restPending'}; return; } // フォールバック
       schedule[s.id][d] = a;
       if(a.type==='night'){
         st.nightCount++; st.consec++; st.workCount++; st.prevType='night'; teamNightCount[s.team]++;
@@ -1831,6 +1832,7 @@ function scoreWarnings(w){
   return s;
 }
 function runGeneration(keepLocks=false){
+  try {
   if(!keepLocks) manualLocks = {}; // 通常生成はロッククリア
   const MAX_TRIES = 5;
   let bestSchedule = null, bestState = null, bestWarnings = null, bestScore = Infinity;
@@ -1906,6 +1908,10 @@ function runGeneration(keepLocks=false){
   document.getElementById('warnSection').style.display='block';
   document.getElementById('summarySection').style.display='block';
   updateLockButtons();
+  } catch(e) {
+    console.error('生成エラー:', e);
+    alert('生成中にエラーが発生しました。\n' + e.message + '\n\n詳細はブラウザのコンソール（F12）をご確認ください。');
+  }
 }
 /* ===================== ルール一覧 ===================== */
 const RULES_KEY = 'ward-app-rules-custom';
