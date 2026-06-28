@@ -1852,6 +1852,7 @@ function runGeneration(keepLocks=false){
   warnings = bestWarnings;
   const state = bestState;
   lastGeneratedState = state;
+  const DAYS = daysInMonth();
   // 夏季休暇履歴を保存・年間上限チェック
   const natsuCounts = {};
   getActiveStaff().forEach(s=>{
@@ -1879,7 +1880,6 @@ function runGeneration(keepLocks=false){
     });
   }
   // 夜勤回数履歴を保存（3ヶ月連続ルール用）
-  const DAYS = daysInMonth();
   const nightCounts = {};
   getActiveStaff().forEach(s=>{
     let n=0;
