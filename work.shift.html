@@ -1570,7 +1570,10 @@ function generateSchedule(locks={}){
       }
       else {
         st.consec=0; st.prevType=a.type; st.virtualRemaining--;
-        if(a.type==='公' || a.type==='祝') st.mandatoryRestTaken++; // 公/祝は必ずカウント（ロック有無問わず）
+        // 公/祝/restPending（=公祝になる予定の休み）は必須休みとしてカウント（上限まで）
+        if(a.type==='公' || a.type==='祝' || a.type==='restPending'){
+          if(st.mandatoryRestTaken < kouQuota + shukuQuota) st.mandatoryRestTaken++;
+        }
         if(s.id===nightOnlyId){ st.nightStreak=0; }
       }
     });
