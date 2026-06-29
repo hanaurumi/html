@@ -1964,10 +1964,11 @@ function runGeneration(keepLocks=false){
     else if(c0>=5 && c1>=5) warnings.push(`📋 ${s.name}：夜勤5回が2ヶ月連続です。来月は5回にできません（月4回以下にしてください）。`);
   });
   // 夜勤専従のnightStreak/forcedRestDaysLeftを翌月引き継ぎ用に保存
-  if(nightOnlyId && state[nightOnlyId]){
-    if(!prevMonthCarryover[nightOnlyId]) prevMonthCarryover[nightOnlyId] = {};
-    prevMonthCarryover[nightOnlyId].nightStreak = state[nightOnlyId].nightStreak;
-    prevMonthCarryover[nightOnlyId].forcedRestDaysLeft = state[nightOnlyId].forcedRestDaysLeft;
+  const _nightOnlyId = nightOnlyStaffId ? Number(nightOnlyStaffId) : null;
+  if(_nightOnlyId && state[_nightOnlyId]){
+    if(!prevMonthCarryover[_nightOnlyId]) prevMonthCarryover[_nightOnlyId] = {};
+    prevMonthCarryover[_nightOnlyId].nightStreak = state[_nightOnlyId].nightStreak;
+    prevMonthCarryover[_nightOnlyId].forcedRestDaysLeft = state[_nightOnlyId].forcedRestDaysLeft;
     savePrevCarryover();
   }
   renderResultGrid();
