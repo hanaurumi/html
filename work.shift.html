@@ -227,7 +227,7 @@
       <h2>夜勤専従の設定（月ごと）</h2>
       <p class="note">
         夜勤専従は月に1名まで設定できます。設定すると、その人は日勤・遅Bには入らず、夜勤を月9回まで担当できます（通常は月5回までです）。<br>
-        夜勤を2回連続まで休みなしで行うことができ、2連続夜勤を行った場合は次に必ず2連休になります。<br>
+        基本サイクル：夜勤→明け→公休（3日ごとに1夜勤）。月9回に届かない場合のみ夜勤→明け→夜勤→明け→公休→公休の2連夜勤を使用します。2連続夜勤を行った場合は次に必ず2連休（明け含む計4日）になります。<br>
         休みは公休・祝で埋まる分はそのままラベル付けされ、それでも足りない分は「特」（特別休）として表示されます。
       </p>
       <div class="field-row">
@@ -1262,21 +1262,41 @@ function generateSchedule(locks={}){
       const s = STAFF_MAP[nightOnlyId];
       const st = state[s.id];
       const r = reqOf(s,d);
-      if(st.prevType==='night'){
+      if(dayAssign[s.id]){
+        // ロック済みセルはスキップ（ただしforcedRestDaysLeftは消費）
+        if(st.forcedRestDaysLeft>0) st.forcedRestDaysLeft--;
+      } else if(st.prevType==='night'){
         // 夜勤翌日は必ず明け（Phase1で設定）
       } else if(st.forcedRestDaysLeft>0){
-        dayAssign[s.id] = {type:'restPendingSpecial'};
-        st.forcedRestDaysLeft--;
+        // 基本は夜→明→公休。1回夜勤後のforcedRest=1の場合、月の夜勤数が足りなければ2連夜勤へ変更
+        const canOverride = st.forcedRestDaysLeft===1 && st.nightStreak===1
+          && r!=='off' && st.nightCount<9;
+        if(canOverride){
+          // 1連夜勤サイクル(3日)で残り9回に届くか確認
+          const nightsNeeded = 9 - st.nightCount;
+          const possibleWithSingle = Math.floor((daysRemaining - 1) / 3);
+          if(possibleWithSingle < nightsNeeded){
+            // 単独サイクルでは届かない → 2連夜勤へ切り替え
+            st.forcedRestDaysLeft = 0;
+            dayAssign[s.id] = {type:'night', leader:false};
+          } else {
+            dayAssign[s.id] = {type:'restPendingSpecial'};
+            st.forcedRestDaysLeft--;
+          }
+        } else {
+          dayAssign[s.id] = {type:'restPendingSpecial'};
+          st.forcedRestDaysLeft--;
+        }
       } else if(r==='off' || st.nightCount>=9){
         dayAssign[s.id] = {type:'restPendingSpecial'};
       } else {
-        // 夜→明→夜→明→休→休 のサイクル（nightStreak で夜勤回数を管理）
+        // 基本は夜→明→公休の1連夜勤サイクル
         dayAssign[s.id] = {type:'night', leader:false};
       }
     }
-    // Phase1: 明け（夜勤翌日）― 夜勤専従を含む全スタッフ
+    // Phase1: 明け（夜勤翌日）― 夜勤専従を含む全スタッフ（ロック済みは除く）
     STAFF.forEach(s=>{
-      if(state[s.id].prevType==='night') dayAssign[s.id] = {type:'rest'};
+      if(!dayAssign[s.id] && state[s.id].prevType==='night') dayAssign[s.id] = {type:'rest'};
     });
     // Phase1.5: 必須休み強制（残り日数 ≤ 残り必須休み日数のスタッフは今日必ず休み）
     STAFF.filter(s=>!dayAssign[s.id] && !s.weekendOff && s.id!==nightOnlyId).forEach(s=>{
@@ -1523,7 +1543,13 @@ function generateSchedule(locks={}){
         st.nightCount++; st.consec++; st.workCount++; st.prevType='night'; teamNightCount[s.team]++;
         if(s.id===nightOnlyId){
           st.nightStreak++;
-          if(st.nightStreak>=2){ st.forcedRestDaysLeft=2; st.nightStreak=0; }
+          if(st.nightStreak>=2){
+            // 2連夜勤 → 次は必ず2連休（明け+2日）
+            st.forcedRestDaysLeft=2; st.nightStreak=0;
+          } else {
+            // 1連夜勤 → 基本は明け+1日休（夜→明→公）
+            st.forcedRestDaysLeft=1;
+          }
         }
       }
       else if(a.type==='late'){ st.lateCount++; st.consec++; st.workCount++; st.prevType='late'; teamLateCount[s.team]++; }
@@ -1544,7 +1570,7 @@ function generateSchedule(locks={}){
       }
       else {
         st.consec=0; st.prevType=a.type; st.virtualRemaining--;
-        if(!a.locked) st.mandatoryRestTaken++; // ロック外の休み日カウント
+        if(a.type==='公' || a.type==='祝') st.mandatoryRestTaken++; // 公/祝は必ずカウント（ロック有無問わず）
         if(s.id===nightOnlyId){ st.nightStreak=0; }
       }
     });
@@ -2028,9 +2054,11 @@ function generateDefaultRulesHtml(){
   <p><strong>【勤務希望の反映ルール】</strong></p>
   <ul>
     <li>希望には「🔒必須」と「〜できれば」の2段階がある（③希望入力タブで各セルの強度を切り替え可）</li>
-    <li>🔒必須：夜勤・日勤の人数が足りていても最優先で反映。人員調整による変更は行わない</li>
+    <li>🔒必須：夜勤・日勤の希望は最優先で反映。人員調整による変更は行わない</li>
+    <li>🔒必須の休み希望（公休）は自動修正の振り替え対象から除外する</li>
     <li>〜できれば：原則反映するが、夜勤などで人数が不足する場合は振り替えの対象になる場合がある</li>
-    <li>必須の休み希望（🔒公休）は自動修正の振り替え対象から除外する</li>
+    <li>夏季休暇希望（夏）：年間上限5回まで反映。月をまたいで分割取得可能</li>
+    <li>開院記念日希望（開）：9/16以降のみ取得可能。年度内（4月〜3月）1回取得義務あり</li>
   </ul>
   <p><strong>【組み合わせNG条件（②スタッフタブで設定）】</strong></p>
   <ul>
@@ -2057,7 +2085,8 @@ function generateDefaultRulesHtml(){
   <p><strong>【夜勤専従（夜勤専従タブで月ごとに設定）】</strong></p>
   <ul>
     <li>月に1名まで設定可能。現在の設定：${nightOnlyStaffId && STAFF_MAP[Number(nightOnlyStaffId)] ? STAFF_MAP[Number(nightOnlyStaffId)].name : 'なし'}</li>
-    <li>夜勤は月9回まで。2連続夜勤を行った場合、次は必ず2連休になる</li>
+    <li>夜勤は月9回まで。基本サイクル：夜勤→明け→公休（3日）。9回に届かない場合のみ2連夜勤（夜→明→夜→明→公→公）を使用</li>
+    <li>2連続夜勤を行った場合、次は必ず2連休以上（明け含む計4日）</li>
     <li>休み：公休・祝で埋まらない分は「特」（特別休）として扱う</li>
   </ul>
   `;
