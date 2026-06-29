@@ -193,6 +193,7 @@
     <section>
       <h2>カレンダーで個別の日を上書き</h2>
       <p class="note">祝日の自動判定がずれている場合や、特定の日だけ夜勤パターンを変えたい場合はここで上書きできます。</p>
+      <p class="note">日勤の下限・上限は空欄のままにすると基本設定（平日：最低${weekdayDayMin}名／最大${weekdayDayMax!=null?weekdayDayMax+'名':'上限なし'}）が適用されます。特定日だけ変えたい場合のみ入力してください。</p>
       <div class="scroll-wrap" style="max-height:600px;">
         <div class="calmini" id="calOverrideGrid"></div>
       </div>
