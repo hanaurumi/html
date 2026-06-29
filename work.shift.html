@@ -1262,7 +1262,10 @@ function generateSchedule(locks={}){
       const s = STAFF_MAP[nightOnlyId];
       const st = state[s.id];
       const r = reqOf(s,d);
-      if(st.prevType==='night'){
+      if(dayAssign[s.id]){
+        // ロック済みセルはスキップ（ただしforcedRestDaysLeftは消費）
+        if(st.forcedRestDaysLeft>0) st.forcedRestDaysLeft--;
+      } else if(st.prevType==='night'){
         // 夜勤翌日は必ず明け（Phase1で設定）
       } else if(st.forcedRestDaysLeft>0){
         // 基本は夜→明→公休。1回夜勤後のforcedRest=1の場合、月の夜勤数が足りなければ2連夜勤へ変更
@@ -1291,9 +1294,9 @@ function generateSchedule(locks={}){
         dayAssign[s.id] = {type:'night', leader:false};
       }
     }
-    // Phase1: 明け（夜勤翌日）― 夜勤専従を含む全スタッフ
+    // Phase1: 明け（夜勤翌日）― 夜勤専従を含む全スタッフ（ロック済みは除く）
     STAFF.forEach(s=>{
-      if(state[s.id].prevType==='night') dayAssign[s.id] = {type:'rest'};
+      if(!dayAssign[s.id] && state[s.id].prevType==='night') dayAssign[s.id] = {type:'rest'};
     });
     // Phase1.5: 必須休み強制（残り日数 ≤ 残り必須休み日数のスタッフは今日必ず休み）
     STAFF.filter(s=>!dayAssign[s.id] && !s.weekendOff && s.id!==nightOnlyId).forEach(s=>{
@@ -1567,7 +1570,7 @@ function generateSchedule(locks={}){
       }
       else {
         st.consec=0; st.prevType=a.type; st.virtualRemaining--;
-        if(!a.locked) st.mandatoryRestTaken++; // ロック外の休み日カウント
+        if(a.type==='公' || a.type==='祝') st.mandatoryRestTaken++; // 公/祝は必ずカウント（ロック有無問わず）
         if(s.id===nightOnlyId){ st.nightStreak=0; }
       }
     });
