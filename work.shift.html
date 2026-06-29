@@ -159,9 +159,19 @@
         <span class="note" style="margin:0;">人</span>
       </div>
       <div class="field-row">
+        <label>平日の日勤（最大人数）</label>
+        <input type="number" id="weekdayDayMaxInput" min="1" max="40" style="width:80px;" placeholder="上限なし">
+        <span class="note" style="margin:0;">人（空欄=上限なし）</span>
+      </div>
+      <div class="field-row">
         <label>土日祝日の日勤（最低人数）</label>
         <input type="number" id="weekendDayMinInput" min="1" max="40" style="width:80px;">
         <span class="note" style="margin:0;">人</span>
+      </div>
+      <div class="field-row">
+        <label>土日祝日の日勤（最大人数）</label>
+        <input type="number" id="weekendDayMaxInput" min="1" max="40" style="width:80px;" placeholder="上限なし">
+        <span class="note" style="margin:0;">人（空欄=上限なし）</span>
       </div>
       <div class="actions">
         <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
@@ -358,7 +368,9 @@ let dateOverridePattern = {};
 let holidayOverride = {};
 let dayCountOverride = {}; // {[dateKey]: {min?:number, max?:number}}
 let weekdayDayMin = 12;
+let weekdayDayMax = null;
 let weekendDayMin = 6;
+let weekendDayMax = null;
 let nenkyuCapDefault = 2;
 let nenkyuMinDefault = 1;
 let staffOverrides = {};
@@ -454,11 +466,12 @@ function requiredCounts(d){
   const dk = dateKey(d);
   const ov = dayCountOverride[dk] || {};
   const baseDay = isWeekendOrHoliday(d) ? weekendDayMin : weekdayDayMin;
+  const baseMax = isWeekendOrHoliday(d) ? weekendDayMax : weekdayDayMax;
   return {
     night: pattern==='A' ? 4 : 3,
     late:  pattern==='B' ? 1 : 0,
     day:   (ov.min != null) ? ov.min : baseDay,
-    dayMax: (ov.max != null) ? ov.max : null
+    dayMax: (ov.max != null) ? ov.max : baseMax
   };
 }
 function sanitizeWeekendHolidayPatterns(){
@@ -558,7 +571,9 @@ async function loadSettings(){
       dayCountOverride = s.dayCountOverride || {};
       ngConditions = s.ngConditions || [];
       weekdayDayMin = s.weekdayDayMin || 12;
+      weekdayDayMax = (s.weekdayDayMax != null) ? s.weekdayDayMax : null;
       weekendDayMin = s.weekendDayMin || 6;
+      weekendDayMax = (s.weekendDayMax != null) ? s.weekendDayMax : null;
       nenkyuCapDefault = (s.nenkyuCapDefault!==undefined && s.nenkyuCapDefault!==null) ? s.nenkyuCapDefault : 2;
       nenkyuMinDefault = (s.nenkyuMinDefault!==undefined && s.nenkyuMinDefault!==null) ? s.nenkyuMinDefault : 1;
       staffOverrides = s.staffOverrides || {};
@@ -572,7 +587,7 @@ function saveSettings(){
     try{
       lsSet(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
-        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekendDayMin, nenkyuCapDefault, nenkyuMinDefault, staffOverrides
+        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekdayDayMax, weekendDayMin, weekendDayMax, nenkyuCapDefault, nenkyuMinDefault, staffOverrides
       }));
     }catch(e){}
   }, 300);
@@ -649,7 +664,9 @@ function renderWeekdayPatternGrid(){
 }
 function renderDayMinInputs(){
   document.getElementById('weekdayDayMinInput').value = weekdayDayMin;
+  document.getElementById('weekdayDayMaxInput').value = weekdayDayMax != null ? weekdayDayMax : '';
   document.getElementById('weekendDayMinInput').value = weekendDayMin;
+  document.getElementById('weekendDayMaxInput').value = weekendDayMax != null ? weekendDayMax : '';
   document.getElementById('nenkyuCapInput').value = nenkyuCapDefault;
   document.getElementById('nenkyuMinInput').value = nenkyuMinDefault;
 }
@@ -699,7 +716,11 @@ function setDayCountOverride(dk, field, val){
 }
 function saveAndRerenderSettings(){
   weekdayDayMin = parseInt(document.getElementById('weekdayDayMinInput').value,10) || 12;
+  const _wdMax = document.getElementById('weekdayDayMaxInput').value;
+  weekdayDayMax = _wdMax !== '' ? (parseInt(_wdMax,10) || null) : null;
   weekendDayMin = parseInt(document.getElementById('weekendDayMinInput').value,10) || 6;
+  const _weMax = document.getElementById('weekendDayMaxInput').value;
+  weekendDayMax = _weMax !== '' ? (parseInt(_weMax,10) || null) : null;
   nenkyuCapDefault = parseInt(document.getElementById('nenkyuCapInput').value,10);
   if(isNaN(nenkyuCapDefault) || nenkyuCapDefault<0) nenkyuCapDefault = 2;
   nenkyuMinDefault = parseInt(document.getElementById('nenkyuMinInput').value,10);
@@ -2071,7 +2092,7 @@ function generateDefaultRulesHtml(){
   <ul>
     <li>土日・祝日の夜勤は常に3人夜勤（4人夜勤は選択不可）。遅Bを付けるかどうかは①基本設定タブで選択</li>
     <li>平日の夜勤体制：①基本設定タブの「曜日ごとの夜勤パターン」で変更可（A=4人夜勤(遅Bなし)、B=3人夜勤+遅B1人）</li>
-    <li>日勤の必要人数：平日${weekdayDayMin}名以上、土日祝日${weekendDayMin}名以上（①基本設定タブで変更可）</li>
+    <li>日勤の必要人数：平日${weekdayDayMin}名以上${weekdayDayMax!=null?weekdayDayMax+'名以下':'上限なし'}、土日祝日${weekendDayMin}名以上${weekendDayMax!=null?weekendDayMax+'名以下':'上限なし'}（①基本設定タブで変更可）</li>
     <li>日勤のリーダー人数：平日はAチーム・Bチームそれぞれ1名以上（チームに2名以上いる場合のみ）、土日祝日はチーム問わず1名以上</li>
     <li>夜勤のリーダー：1名のみ配置。3人夜勤の場合、A・Bそれぞれにリーダーを置く必要はなく、人数の多い側のチーム（2名）から1名リーダーを出せば条件クリア。</li>
     <li>平日日勤の師長代行：②スタッフタブで「師長代行可否」をチェックした人を必ず1名確保。結果表では◆マークで表示</li>
