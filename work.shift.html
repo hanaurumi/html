@@ -1144,7 +1144,7 @@ function generateSchedule(locks={}){
   for(let d=1; d<=DAYS; d++){ const r=requiredCounts(d); totalWorkSlots += r.night+r.late+r.day; }
   const regularStaffList = STAFF.filter(s=>!s.weekendOff && s.id!==nightOnlyId);
   let shortStaffWeekdayWork = 0;
-  for(let d=1; d<=DAYS; d++){ if(!isWeekendOrHoliday(d)) shortStaffWeekdayWork += STAFF.filter(s=>s.weekendOff).length; }
+  for(let d=1; d<=DAYS; d++){ if(!isWeekendOrHoliday(d)) shortStaffWeekdayWork += STAFF.filter(s=>s.weekendOff && s.id!==nightOnlyId).length; }
   const totalRestDaysForRegular = (regularStaffList.length*DAYS) - (totalWorkSlots - shortStaffWeekdayWork);
   const avgTotalRestPerRegular = regularStaffList.length>0 ? totalRestDaysForRegular/regularStaffList.length : (kouQuota+shukuQuota);
   const state = {};
@@ -1152,7 +1152,8 @@ function generateSchedule(locks={}){
     const co = prevMonthCarryover[s.id] || {};
     state[s.id] = {nightCount:0, lateCount:0, consec: co.consec||0, prevType: co.lastShift||null, workCount:0,
                    kouRemaining:kouQuota, shukuRemaining:shukuQuota, otherCount:0,
-                   nightStreak:0, forcedRestDaysLeft: co.lastShift==='night' ? 0 : 0,
+                   nightStreak: s.id===nightOnlyId ? (co.nightStreak||0) : 0,
+                   forcedRestDaysLeft: s.id===nightOnlyId ? (co.forcedRestDaysLeft||0) : (co.lastShift==='night' ? 0 : 0),
                    mandatoryRestTaken: 0, // 公+祝クォータ消化用カウンター
                    virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota+nenkyuMinDefault) : Math.max(avgTotalRestPerRegular, kouQuota+shukuQuota+nenkyuMinDefault)};
     // 前月末が夜勤 → 1日目は明けになるのでPhase1で処理される（prevType='night'をセット済み）
@@ -1234,7 +1235,7 @@ function generateSchedule(locks={}){
   }
   function restSortKey(s, daysRemaining){
     const st = state[s.id];
-    return st.virtualRemaining / daysRemaining;
+    return daysRemaining > 0 ? st.virtualRemaining / daysRemaining : 0;
   }
   const plannedPair = {};
   (function planWeekendPairs(){
@@ -1355,7 +1356,13 @@ function generateSchedule(locks={}){
       if(nightNeeded>0){
         // NGを一時無視して充足
         let cands2 = STAFF.filter(s=>!dayAssign[s.id] && eligibleNight(s,d));
-        for(const s of cands2){ if(nightNeeded<=0) break; if(dayAssign[s.id]) continue; if(!canAddToNight(s,nightList,req.night,false)) continue; nightList.push(s); dayAssign[s.id]={type:'night',leader:false}; nightNeeded--; }
+        for(const s of cands2){
+          if(nightNeeded<=0) break;
+          if(dayAssign[s.id]) continue;
+          if(!canAddToNight(s,nightList,req.night,false)) continue;
+          if(violatesNg(s.id,'night',dayAssign)) warnings.push(`${d}日(${dowLabel(d)})：${s.name}をNG違反で夜勤配置（人員不足のため）。`);
+          nightList.push(s); dayAssign[s.id]={type:'night',leader:false}; nightNeeded--;
+        }
       }
       if(nightNeeded>0) warnings.push(`${d}日(${dowLabel(d)})：夜勤が${nightNeeded}名不足しています。`);
     }
@@ -1588,14 +1595,27 @@ function generateSchedule(locks={}){
     const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
     const totalCap = kouQuota + shukuQuota + effectiveCap;
     if(restDays.length > totalCap){
-      // 公休・祝日は変換せず、平日の休みのみ日勤に変換
+      // 公休・祝日は変換せず、平日の休みのみ日勤に変換（dayMaxを超えない日のみ）
       const mandatory = restDays.filter(d=>isHoliday(d)||isWeekend(d));
       let weekdays = restDays.filter(d=>!isHoliday(d)&&!isWeekend(d));
       const weekdayCap = Math.max(0, totalCap - mandatory.length);
-      while(weekdays.length > weekdayCap){
-        const d = weekdays.pop();
-        schedule[s.id][d] = {type:'day', leader:false};
-        state[s.id].workCount++;
+      // 最新日から順に試し、dayMaxを超えない日のみ日勤に変換
+      let wi = weekdays.length - 1;
+      while(weekdays.length > weekdayCap && wi >= 0){
+        const d = weekdays[wi];
+        const req2 = requiredCounts(d);
+        const dow = getDow(d);
+        const lateAsDay = [1,2,5].includes(dow);
+        const dayCount = STAFF.filter(s2=>{
+          const t2 = schedule[s2.id][d]?.type;
+          return t2==='day' || (lateAsDay && t2==='late');
+        }).length;
+        if(req2.dayMax == null || dayCount < req2.dayMax){
+          weekdays.splice(wi, 1);
+          schedule[s.id][d] = {type:'day', leader:false};
+          state[s.id].workCount++;
+        }
+        wi--;
       }
       restDays = [...mandatory, ...weekdays].sort((a,b)=>a-b);
     }
@@ -1943,6 +1963,13 @@ function runGeneration(keepLocks=false){
     if(c0>=5 && c1>=5 && c2>=5) warnings.push(`⚠️ ${s.name}：3ヶ月連続で夜勤5回となっています（労働法上の上限を超える可能性があります）。`);
     else if(c0>=5 && c1>=5) warnings.push(`📋 ${s.name}：夜勤5回が2ヶ月連続です。来月は5回にできません（月4回以下にしてください）。`);
   });
+  // 夜勤専従のnightStreak/forcedRestDaysLeftを翌月引き継ぎ用に保存
+  if(nightOnlyId && state[nightOnlyId]){
+    if(!prevMonthCarryover[nightOnlyId]) prevMonthCarryover[nightOnlyId] = {};
+    prevMonthCarryover[nightOnlyId].nightStreak = state[nightOnlyId].nightStreak;
+    prevMonthCarryover[nightOnlyId].forcedRestDaysLeft = state[nightOnlyId].forcedRestDaysLeft;
+    savePrevCarryover();
+  }
   renderResultGrid();
   renderWarnings();
   renderSummary(state);
