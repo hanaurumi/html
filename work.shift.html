@@ -1588,14 +1588,27 @@ function generateSchedule(locks={}){
     const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
     const totalCap = kouQuota + shukuQuota + effectiveCap;
     if(restDays.length > totalCap){
-      // 公休・祝日は変換せず、平日の休みのみ日勤に変換
+      // 公休・祝日は変換せず、平日の休みのみ日勤に変換（dayMaxを超えない日のみ）
       const mandatory = restDays.filter(d=>isHoliday(d)||isWeekend(d));
       let weekdays = restDays.filter(d=>!isHoliday(d)&&!isWeekend(d));
       const weekdayCap = Math.max(0, totalCap - mandatory.length);
-      while(weekdays.length > weekdayCap){
-        const d = weekdays.pop();
-        schedule[s.id][d] = {type:'day', leader:false};
-        state[s.id].workCount++;
+      // 最新日から順に試し、dayMaxを超えない日のみ日勤に変換
+      let wi = weekdays.length - 1;
+      while(weekdays.length > weekdayCap && wi >= 0){
+        const d = weekdays[wi];
+        const req2 = requiredCounts(d);
+        const dow = getDow(d);
+        const lateAsDay = [1,2,5].includes(dow);
+        const dayCount = STAFF.filter(s2=>{
+          const t2 = schedule[s2.id][d]?.type;
+          return t2==='day' || (lateAsDay && t2==='late');
+        }).length;
+        if(req2.dayMax == null || dayCount < req2.dayMax){
+          weekdays.splice(wi, 1);
+          schedule[s.id][d] = {type:'day', leader:false};
+          state[s.id].workCount++;
+        }
+        wi--;
       }
       restDays = [...mandatory, ...weekdays].sort((a,b)=>a-b);
     }
