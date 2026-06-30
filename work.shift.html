@@ -1177,7 +1177,9 @@ function generateSchedule(locks={}){
                    nightStreak: s.id===nightOnlyId ? (co.nightStreak||0) : 0,
                    forcedRestDaysLeft: s.id===nightOnlyId ? (co.forcedRestDaysLeft||0) : (co.lastShift==='night' ? 0 : 0),
                    mandatoryRestTaken: 0, // 公+祝クォータ消化用カウンター
-                   virtualRemaining: s.weekendOff ? (kouQuota+shukuQuota+nenkyuMinDefault) : Math.max(avgTotalRestPerRegular, kouQuota+shukuQuota+nenkyuMinDefault)};
+                   // virtualRemaining = 全員一律 mandatoryTotal（公+祝クォータ）
+                   // これにより全スタッフが同じ枚数のrestPendingを受け取り公休数が均等化される
+                   virtualRemaining: kouQuota + shukuQuota};
     // 前月末が夜勤 → 1日目は明けになるのでPhase1で処理される（prevType='night'をセット済み）
     // 前月末が明け → 1日目は公休にする（prevType='rest'をセット済み）
   });
@@ -1649,37 +1651,24 @@ function generateSchedule(locks={}){
     if(N < mandatoryTotal){
       warnings.push(`${s.name}：今月の休みが${N}日しかなく、公休・祝の合計${mandatoryTotal}日分を確保できませんでした（必要人数が多すぎる可能性があります）。`);
     }
-    // ラベル付けルール（公+祝の合計を mandatoryTotal に厳格に制限）：
-    //   ① 祝日 → 優先的に公+祝クォータを消化（祝ラベル）
-    //   ② 土日 → 次に公+祝クォータを消化（公ラベル）
-    //   ③ 平日 → クォータ残があれば公、なければ年休 → 年休案
-    //   ④ クォータ超過の祝日・土日 → 年休 → 年休案（公休数の上限を超えないため）
+    // ラベル付け：祝日→祝、それ以外→公（シンプル）
+    // virtualRemaining=mandatoryTotalで全員同数のrestPendingになるため超過は原則発生しない
+    // 万一超過した場合（強制休み等）も年休として処理
     const effectiveNenkyuCap = nenkyuCapDefault + nenkyuExtra(s);
     let mandatoryLeft = mandatoryTotal;
-    let nenkyuLeft = Math.min(Math.max(0, N - mandatoryTotal), effectiveNenkyuCap);
-    // 祝日→土日→平日の順に優先してラベル付けするためソート
-    const sortedForLabel = [...restDays].sort((a, b)=>{
-      const priA = isHoliday(a) ? 0 : isWeekend(a) ? 1 : 2;
-      const priB = isHoliday(b) ? 0 : isWeekend(b) ? 1 : 2;
-      return priA !== priB ? priA - priB : a - b;
+    const sortedForLabel = [...restDays].sort((a,b)=>{
+      const priA = isHoliday(a)?0:isWeekend(a)?1:2;
+      const priB = isHoliday(b)?0:isWeekend(b)?1:2;
+      return priA!==priB ? priA-priB : a-b;
     });
     const labelMap = {};
     sortedForLabel.forEach(d=>{
-      let label;
-      if(mandatoryLeft > 0){
-        label = isHoliday(d) ? '祝' : '公';
-        mandatoryLeft--;
-      } else if(nenkyuLeft > 0){
-        label = '年休';
-        nenkyuLeft--;
-      } else {
-        label = '年休案'; // 公休・年休上限超過分は年休案として提案
-      }
-      labelMap[d] = label;
+      if(mandatoryLeft > 0){ labelMap[d] = isHoliday(d)?'祝':'公'; mandatoryLeft--; }
+      else { labelMap[d] = '年休'; } // 超過分のみ年休（均等化のため発生最小化）
     });
     restDays.forEach(d=>{
       const label = labelMap[d];
-      schedule[s.id][d] = {type:label, leader:false, proposal: label==='年休案'};
+      schedule[s.id][d] = {type:label, leader:false};
       if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
     });
   });
@@ -1722,59 +1711,7 @@ function generateSchedule(locks={}){
     }
     return true;
   }
-  STAFF.filter(s=>s.id!==nightOnlyId).forEach(s=>{
-    const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
-    const effectiveMin = Math.min(nenkyuMinDefault, effectiveCap);
-    if(effectiveMin <= 0) return;
-    // 必須休み（公+祝）が消化できていない場合は年休最低保証を適用しない
-    if(!s.weekendOff){
-      let mandUsed=0;
-      for(let d=1;d<=DAYS;d++){ const t=schedule[s.id][d]?.type; if(t==='公'||t==='祝') mandUsed++; }
-      if(mandUsed < kouQuota + shukuQuota) return;
-    }
-    if(s.weekendOff){
-      // 時短スタッフ：平日の restPending → 年休案（提案、確定は手動）
-      let nenkyuCount = 0;
-      for(let d=1;d<=DAYS;d++){ const t=schedule[s.id][d]?.type; if(t==='年休'||t==='年休案') nenkyuCount++; }
-      for(let d=1; d<=DAYS; d++){
-        if(nenkyuCount >= effectiveMin) break;
-        if(schedule[s.id][d]?.type==='restPending' && canGiveNenkyuOnDay(s, d)){
-          schedule[s.id][d] = {type:'年休案', leader:false, proposal:true};
-          nenkyuCount++;
-        }
-      }
-      // 残りの restPending は公/祝へ
-      for(let d=1;d<=DAYS;d++){
-        if(schedule[s.id][d]?.type==='restPending'){
-          const label = isHoliday(d)?'祝':isWeekend(d)?'公':'公';
-          schedule[s.id][d]={type:label,leader:false};
-        }
-      }
-    } else {
-      // 通常スタッフ：平日の公休を年休案に再ラベル（提案、確定は手動）
-      // 日勤余裕（slack）の多い日から優先して提案し、偏りを防ぐ
-      let nenkyuCount = 0;
-      for(let d=1;d<=DAYS;d++){ const t=schedule[s.id][d]?.type; if(t==='年休'||t==='年休案') nenkyuCount++; }
-      // 候補日を日勤余裕の多い順にソート
-      const nenkyuCandidates = [];
-      for(let d=1;d<=DAYS;d++){
-        const t = schedule[s.id][d]?.type;
-        if((t==='公'||t==='年休案') && !isWeekend(d) && !isHoliday(d)){
-          const req = requiredCounts(d);
-          const slack = dayShiftCount(d) - req.day;
-          nenkyuCandidates.push({d, slack});
-        }
-      }
-      nenkyuCandidates.sort((a,b)=> b.slack - a.slack);
-      // 日勤余裕がある日を上限（nenkyuCapDefault）まで提案
-      for(const {d, slack} of nenkyuCandidates){
-        if(nenkyuCount >= effectiveCap) break;
-        if(slack < 0) break; // 余裕なし
-        schedule[s.id][d] = {type:'年休案', leader:false, proposal:true};
-        nenkyuCount++;
-      }
-    }
-  });
+  // 年休案の自動提案は廃止（年休は超過分のみ自動付与、均等化はスケジューラ側で対応）
   // ── 月末全ルール検証 ──
   STAFF.forEach(s=>{
     if(s.weekendOff) return;
