@@ -1659,10 +1659,12 @@ function generateSchedule(locks={}){
       let label;
       if(isHoliday(d) && mandatoryLeft>0){ label='祝'; mandatoryLeft--; }
       else if(isWeekend(d) && mandatoryLeft>0){ label='公'; mandatoryLeft--; }
-      else if(mandatoryLeft>0){ label='公'; mandatoryLeft--; } // 平日でもクォータ未達なら公
+      else if(mandatoryLeft>0 && !isWeekend(d) && !isHoliday(d)){ label='公'; mandatoryLeft--; } // 平日でもクォータ未達なら公
       else if(nenkyuLeft>0){ label='年休'; nenkyuLeft--; }    // クォータ消化後に年休
-      else { label='公'; }
-      schedule[s.id][d] = {type:label, leader:false};
+      else if(isWeekend(d)){ label='公'; }   // 土日は常に公（クォータ超過でも）
+      else if(isHoliday(d)){ label='祝'; }   // 祝日は常に祝（クォータ超過でも）
+      else { label='年休案'; }               // 平日の超過分は年休案として提案
+      schedule[s.id][d] = {type:label, leader:false, proposal: label==='年休案'};
       if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
     });
   });
@@ -1735,17 +1737,26 @@ function generateSchedule(locks={}){
       }
     } else {
       // 通常スタッフ：平日の公休を年休案に再ラベル（提案、確定は手動）
+      // 日勤余裕（slack）の多い日から優先して提案し、偏りを防ぐ
       let nenkyuCount = 0;
       for(let d=1;d<=DAYS;d++){ const t=schedule[s.id][d]?.type; if(t==='年休'||t==='年休案') nenkyuCount++; }
-      if(nenkyuCount < effectiveMin){
-        for(let d=1; d<=DAYS; d++){
-          if(nenkyuCount >= effectiveMin) break;
-          const t = schedule[s.id][d]?.type;
-          if(t==='公' && !isWeekend(d) && !isHoliday(d)){
-            schedule[s.id][d] = {type:'年休案', leader:false, proposal:true};
-            nenkyuCount++;
-          }
+      // 候補日を日勤余裕の多い順にソート
+      const nenkyuCandidates = [];
+      for(let d=1;d<=DAYS;d++){
+        const t = schedule[s.id][d]?.type;
+        if((t==='公'||t==='年休案') && !isWeekend(d) && !isHoliday(d)){
+          const req = requiredCounts(d);
+          const slack = dayShiftCount(d) - req.day;
+          nenkyuCandidates.push({d, slack});
         }
+      }
+      nenkyuCandidates.sort((a,b)=> b.slack - a.slack);
+      // 日勤余裕がある日を上限（nenkyuCapDefault）まで提案
+      for(const {d, slack} of nenkyuCandidates){
+        if(nenkyuCount >= effectiveCap) break;
+        if(slack < 0) break; // 余裕なし
+        schedule[s.id][d] = {type:'年休案', leader:false, proposal:true};
+        nenkyuCount++;
       }
     }
   });
