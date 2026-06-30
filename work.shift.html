@@ -1628,28 +1628,39 @@ function generateSchedule(locks={}){
     });
   }
   // 休みラベルの確定（restPending → 公/祝/年休）
+  // 日勤カウント取得ヘルパー（ラベル確定フェーズ用）
+  function currentDayCount(d){
+    const dow = getDow(d);
+    const lateAsDay = [1,2,5].includes(dow);
+    return STAFF.filter(s2=>{ const t=schedule[s2.id][d]?.type; return t==='day'||(lateAsDay&&t==='late'); }).length;
+  }
+  // 平日日勤 → 年休へ変換できるか（dayMin を下回らない、manualLock なし）
+  function canConvertDayToNenkyu(s, d){
+    if(isWeekend(d)||isHoliday(d)) return false;
+    if(schedule[s.id][d]?.type !== 'day') return false;
+    if(manualLocks[s.id]?.[d]) return false;
+    const req = requiredCounts(d);
+    return currentDayCount(d) > req.day; // 最低人数を下回らなければOK
+  }
   STAFF.forEach(s=>{
     if(s.weekendOff || s.id===nightOnlyId) return;
     let restDays = [];
     for(let d=1; d<=DAYS; d++){ if(schedule[s.id][d].type==='restPending') restDays.push(d); }
-    const effectiveCap = nenkyuCapDefault + nenkyuExtra(s);
-    const totalCap = kouQuota + shukuQuota + effectiveCap;
+    const mandatoryTotal = kouQuota + shukuQuota;
+    const effectiveNenkyuCap = nenkyuCapDefault + nenkyuExtra(s);
+    const totalCap = mandatoryTotal + effectiveNenkyuCap;
     if(restDays.length > totalCap){
       // 公休・祝日は変換せず、平日の休みのみ日勤に変換（dayMaxを超えない日のみ）
       const mandatory = restDays.filter(d=>isHoliday(d)||isWeekend(d));
       let weekdays = restDays.filter(d=>!isHoliday(d)&&!isWeekend(d));
       const weekdayCap = Math.max(0, totalCap - mandatory.length);
-      // 最新日から順に試し、dayMaxを超えない日のみ日勤に変換
       let wi = weekdays.length - 1;
       while(weekdays.length > weekdayCap && wi >= 0){
         const d = weekdays[wi];
         const req2 = requiredCounts(d);
         const dow = getDow(d);
         const lateAsDay = [1,2,5].includes(dow);
-        const dayCount = STAFF.filter(s2=>{
-          const t2 = schedule[s2.id][d]?.type;
-          return t2==='day' || (lateAsDay && t2==='late');
-        }).length;
+        const dayCount = STAFF.filter(s2=>{ const t2=schedule[s2.id][d]?.type; return t2==='day'||(lateAsDay&&t2==='late'); }).length;
         if(req2.dayMax == null || dayCount < req2.dayMax){
           weekdays.splice(wi, 1);
           schedule[s.id][d] = {type:'day', leader:false};
@@ -1660,31 +1671,78 @@ function generateSchedule(locks={}){
       restDays = [...mandatory, ...weekdays].sort((a,b)=>a-b);
     }
     const N = restDays.length;
-    const mandatoryTotal = kouQuota + shukuQuota;
     if(N < mandatoryTotal){
       warnings.push(`${s.name}：今月の休みが${N}日しかなく、公休・祝の合計${mandatoryTotal}日分を確保できませんでした（必要人数が多すぎる可能性があります）。`);
     }
-    // ラベル付け：祝日→祝、それ以外→公（シンプル）
-    // virtualRemaining=mandatoryTotalで全員同数のrestPendingになるため超過は原則発生しない
-    // 万一超過した場合（強制休み等）も年休として処理
-    const effectiveNenkyuCap = nenkyuCapDefault + nenkyuExtra(s);
+    // ラベル付け：祝日→祝、それ以外→公、年休上限内の超過分→年休、上限超過分→日勤に戻す
     let mandatoryLeft = mandatoryTotal;
+    let nenkyuLeft = effectiveNenkyuCap;
     const sortedForLabel = [...restDays].sort((a,b)=>{
       const priA = isHoliday(a)?0:isWeekend(a)?1:2;
       const priB = isHoliday(b)?0:isWeekend(b)?1:2;
       return priA!==priB ? priA-priB : a-b;
     });
     const labelMap = {};
+    const overflowDays = []; // 年休上限超過・日勤に戻す候補
     sortedForLabel.forEach(d=>{
       if(mandatoryLeft > 0){ labelMap[d] = isHoliday(d)?'祝':'公'; mandatoryLeft--; }
-      else { labelMap[d] = '年休'; } // 超過分のみ年休（均等化のため発生最小化）
+      else if(nenkyuLeft > 0){ labelMap[d] = '年休'; nenkyuLeft--; }
+      else { overflowDays.push(d); } // 年休上限超過
+    });
+    // 年休上限超過分：平日なら日勤に戻す、戻せなければ公休（mandatoryTotal超過を警告）
+    overflowDays.forEach(d=>{
+      if(!isWeekend(d)&&!isHoliday(d)){
+        const req2 = requiredCounts(d);
+        const dc = currentDayCount(d);
+        if(req2.dayMax == null || dc < req2.dayMax){
+          schedule[s.id][d] = {type:'day', leader:false};
+          state[s.id].workCount++;
+          return;
+        }
+      }
+      // 日勤に戻せない場合は公として扱い警告
+      labelMap[d] = '公';
+      warnings.push(`⚠️ ${s.name}：年休上限超過分を公休に変換しました（${d}日）。日勤dayMaxに余裕がありませんでした。`);
     });
     restDays.forEach(d=>{
+      if(schedule[s.id][d]?.type === 'day') return; // 日勤に戻した日はスキップ
       const label = labelMap[d];
       schedule[s.id][d] = {type:label, leader:false};
       if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
     });
   });
+  // 年休均等化パス：年休0の人に対し日勤→年休を変換してバランスを取る
+  (function balanceNenkyu(){
+    const targets = STAFF.filter(s=>!s.weekendOff && s.id!==nightOnlyId);
+    // 現在の年休数を集計
+    function nenkyuCount(s){
+      let n=0; for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') n++; } return n;
+    }
+    // 均等化: 年休が少ない人から順に、上限まで付与を試みる
+    // 全員の平均を目標とせず「上限内で付与できる人には付与」方針
+    let changed = true;
+    while(changed){
+      changed = false;
+      // 年休数が少ない順にソート
+      const sorted = [...targets].sort((a,b)=>nenkyuCount(a)-nenkyuCount(b));
+      for(const s of sorted){
+        const cap = nenkyuCapDefault + nenkyuExtra(s);
+        if(nenkyuCount(s) >= cap) continue;
+        // 平日日勤の日を探して年休に変換（月初から順に試す）
+        for(let d=1; d<=DAYS; d++){
+          if(canConvertDayToNenkyu(s, d)){
+            schedule[s.id][d] = {type:'年休', leader:false};
+            state[s.id].workCount = Math.max(0, state[s.id].workCount-1);
+            state[s.id].otherCount++;
+            teamOtherCount[s.team]++;
+            changed = true;
+            break;
+          }
+        }
+        if(changed) break; // 1件変換したら再ソートして再試行
+      }
+    }
+  })();
   // 夜勤専従の休みラベル確定（restPendingSpecial → 公/祝/特）
   if(nightOnlyId && STAFF_MAP[nightOnlyId]){
     const s = STAFF_MAP[nightOnlyId];
