@@ -1649,21 +1649,36 @@ function generateSchedule(locks={}){
     if(N < mandatoryTotal){
       warnings.push(`${s.name}：今月の休みが${N}日しかなく、公休・祝の合計${mandatoryTotal}日分を確保できませんでした（必要人数が多すぎる可能性があります）。`);
     }
-    // ラベル付けルール：
-    //   公休・祝クォータ合計(mandatoryTotal)を先に消化 → その後の余剰分が年休（上限あり）
-    //   祝日当日→祝、土日当日→公、平日はクォータ未達なら公、達したら年休
+    // ラベル付けルール（公+祝の合計を mandatoryTotal に厳格に制限）：
+    //   ① 祝日 → 優先的に公+祝クォータを消化（祝ラベル）
+    //   ② 土日 → 次に公+祝クォータを消化（公ラベル）
+    //   ③ 平日 → クォータ残があれば公、なければ年休 → 年休案
+    //   ④ クォータ超過の祝日・土日 → 年休 → 年休案（公休数の上限を超えないため）
     const effectiveNenkyuCap = nenkyuCapDefault + nenkyuExtra(s);
-    let mandatoryLeft = mandatoryTotal; // 公+祝クォータの残り（合算）
+    let mandatoryLeft = mandatoryTotal;
     let nenkyuLeft = Math.min(Math.max(0, N - mandatoryTotal), effectiveNenkyuCap);
-    restDays.forEach(d=>{
+    // 祝日→土日→平日の順に優先してラベル付けするためソート
+    const sortedForLabel = [...restDays].sort((a, b)=>{
+      const priA = isHoliday(a) ? 0 : isWeekend(a) ? 1 : 2;
+      const priB = isHoliday(b) ? 0 : isWeekend(b) ? 1 : 2;
+      return priA !== priB ? priA - priB : a - b;
+    });
+    const labelMap = {};
+    sortedForLabel.forEach(d=>{
       let label;
-      if(isHoliday(d) && mandatoryLeft>0){ label='祝'; mandatoryLeft--; }
-      else if(isWeekend(d) && mandatoryLeft>0){ label='公'; mandatoryLeft--; }
-      else if(mandatoryLeft>0 && !isWeekend(d) && !isHoliday(d)){ label='公'; mandatoryLeft--; } // 平日でもクォータ未達なら公
-      else if(nenkyuLeft>0){ label='年休'; nenkyuLeft--; }    // クォータ消化後に年休
-      else if(isWeekend(d)){ label='公'; }   // 土日は常に公（クォータ超過でも）
-      else if(isHoliday(d)){ label='祝'; }   // 祝日は常に祝（クォータ超過でも）
-      else { label='年休案'; }               // 平日の超過分は年休案として提案
+      if(mandatoryLeft > 0){
+        label = isHoliday(d) ? '祝' : '公';
+        mandatoryLeft--;
+      } else if(nenkyuLeft > 0){
+        label = '年休';
+        nenkyuLeft--;
+      } else {
+        label = '年休案'; // 公休・年休上限超過分は年休案として提案
+      }
+      labelMap[d] = label;
+    });
+    restDays.forEach(d=>{
+      const label = labelMap[d];
       schedule[s.id][d] = {type:label, leader:false, proposal: label==='年休案'};
       if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
     });
