@@ -1500,16 +1500,21 @@ function generateSchedule(locks={}){
         excess--;
       }
     }
-    // 日勤リーダー・師長代行確保（最低人数を超えてでも追加）
+    // 日勤リーダー・師長代行確保（dayMax超過時は警告のみ、リーダーのみ優先追加）
     (function ensureDayLeaders(){
+      const atMax = ()=> req.dayMax != null && dayList.length >= req.dayMax;
       if(isWeekendOrHoliday(d)){
         // 土日祝日：リーダー1名のみ必要（師長代行の確保は不要）
         let haveLeader = dayList.some(s=>s.leader);
         if(!haveLeader){
           const idx = restFromFlexible.findIndex(s=>s.leader);
           if(idx>=0){
-            const cand = restFromFlexible.splice(idx,1)[0];
-            dayAssign[cand.id]={type:'day'}; dayList.push(cand);
+            if(atMax()){
+              warnings.push(`${d}日(${dowLabel(d)})：日勤上限のためリーダーを追加できませんでした。`);
+            } else {
+              const cand = restFromFlexible.splice(idx,1)[0];
+              dayAssign[cand.id]={type:'day'}; dayList.push(cand);
+            }
           } else {
             warnings.push(`${d}日(${dowLabel(d)})：日勤のリーダーが不足しています。`);
           }
@@ -1521,20 +1526,28 @@ function generateSchedule(locks={}){
           if(!haveTeamLeader){
             const idx = restFromFlexible.findIndex(s=>s.leader && s.team===team);
             if(idx>=0){
-              const cand = restFromFlexible.splice(idx,1)[0];
-              dayAssign[cand.id]={type:'day'}; dayList.push(cand);
+              if(atMax()){
+                warnings.push(`${d}日(${dowLabel(d)})：日勤上限のため${team}チームリーダーを追加できませんでした。`);
+              } else {
+                const cand = restFromFlexible.splice(idx,1)[0];
+                dayAssign[cand.id]={type:'day'}; dayList.push(cand);
+              }
             } else {
               warnings.push(`${d}日(${dowLabel(d)})：${team}チームの日勤リーダーが不足しています。`);
             }
           }
         });
-        // 平日：師長または師長代行を日勤に1名確保する（師長は自動で管理者扱い）
+        // 平日：師長または師長代行を日勤に1名確保する（dayMax超過時はスキップ）
         const haveChief = dayList.some(s=>isHeadNurse(s)||s.actingChief);
         if(!haveChief){
           const idx = restFromFlexible.findIndex(s=>isHeadNurse(s)||s.actingChief);
           if(idx>=0){
-            const cand = restFromFlexible.splice(idx,1)[0];
-            dayAssign[cand.id]={type:'day'}; dayList.push(cand);
+            if(atMax()){
+              warnings.push(`${d}日(${dowLabel(d)})：日勤上限のため師長・師長代行を追加できませんでした。`);
+            } else {
+              const cand = restFromFlexible.splice(idx,1)[0];
+              dayAssign[cand.id]={type:'day'}; dayList.push(cand);
+            }
           } else {
             warnings.push(`${d}日(${dowLabel(d)})：平日日勤に師長・師長代行が確保できませんでした。`);
           }
