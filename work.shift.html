@@ -143,9 +143,9 @@
         <span class="note" style="margin:0;">回／月</span>
       </div>
       <div class="field-row">
-        <label>年休の最低保証（1人あたり）</label>
+        <label>年休案の提案数（1人あたり）</label>
         <input type="number" id="nenkyuMinInput" min="0" max="10" style="width:80px;">
-        <span class="note" style="margin:0;">回／月（全員がこの回数以上取れるよう調整）</span>
+        <span class="note" style="margin:0;">回／月（0＝提案なし。強制確保ではなく候補表示のみ）</span>
       </div>
       <div class="actions">
         <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
@@ -1190,7 +1190,8 @@ function generateSchedule(locks={}){
     if(s.night===false) return false;
     if(s.night==='request' && reqOf(s,d)!=='night') return false;
     if(s.weekendOff && isWeekendOrHoliday(d)) return false;
-    if(s.exp==='1st' && isWeekendOrHoliday(d) && !weekendNightEnabled(s)) return false;
+    // 1年目・2年目は土日祝の夜勤（3人夜勤）不可（weekendNightUnlocked で個別解除可）
+    if(isJunior(s) && isWeekendOrHoliday(d) && !weekendNightEnabled(s)) return false;
     if(isPlannedRestDay(s,d)) return false;
     const st = state[s.id];
     if(st.prevType==='night') return false;
@@ -1237,9 +1238,11 @@ function generateSchedule(locks={}){
   }
   function canAddToNight(s, currentList, requiredNight, avoidDouble2nd){
     if(!isJunior(s)) return true;
-    const maxJunior = requiredNight===4 ? 2 : 1;
+    // 3人夜勤（土日祝）は1年目・2年目を一切含めない
+    if(requiredNight < 4) return false;
+    // 4人夜勤（平日）：1年目+2年目合計2名まで、1年目は同時1名まで
     const juniorCount = currentList.filter(isJunior).length;
-    if(juniorCount>=maxJunior) return false;
+    if(juniorCount >= 2) return false;
     if(s.exp==='1st' && currentList.some(x=>x.exp==='1st')) return false;
     if(avoidDouble2nd && s.exp==='2nd' && currentList.some(x=>x.exp==='2nd')) return false;
     return true;
@@ -2113,8 +2116,8 @@ function generateDefaultRulesHtml(){
     <li>公休・祝日は月間の必須休みとして合算して管理する（今月：公休${kou}日＋祝${shuku}日＝計${kou+shuku}日）</li>
     <li>休みのラベルは実際の日付タイプで決定：祝日 → 祝、土日 → 公、平日の余剰休み → 年休</li>
     <li>土日・祝日の休みは人員不足でも日勤に変換しない（平日の余剰休みのみ日勤に振り替える）</li>
-    <li>年休の上限：1人あたり月${nenkyuCapDefault}回、最低保証：${nenkyuMinDefault}回（①基本設定タブで変更可）</li>
-    <li>全スタッフが最低${nenkyuMinDefault}回の年休を取れるよう調整する（時短勤務・weekendOff含む）</li>
+    <li>年休の上限：1人あたり月${nenkyuCapDefault}回（①基本設定タブで変更可）。下限は設けない</li>
+    <li>年休案の提案数：${nenkyuMinDefault}回（0の場合は提案なし）。提案は候補表示のみで自動確保はしない</li>
     <li>年休は公休クォータを全て消化してから付与する。土日だけで公休が埋まらない場合は平日の休みを先に公休として使う</li>
     <li>土日2連休は月1回、自動生成時にできるだけ確保するよう試みる</li>
   </ul>
