@@ -1018,7 +1018,7 @@ function autoFixWarnings(){
   const dayShortRe = /(\d+)日.*：日勤が(\d+)名不足/;
   const nightShortRe = /(\d+)日.*：夜勤が(\d+)名不足/;
   for(const w of [...warnings]){
-    // 日勤不足の修正：公休/年休の非必須希望スタッフから振り替え
+    // 日勤不足の修正：年休スタッフのみ振り替え対象（必須希望・公休・祝は除外）
     const dm = w.match(dayShortRe);
     if(dm){
       const d = parseInt(dm[1]);
@@ -1027,7 +1027,7 @@ function autoFixWarnings(){
         const a = schedule[s.id]?.[d];
         if(!a) return false;
         const t = a.type;
-        if(t!=='公'&&t!=='年休') return false;
+        if(t!=='年休' && t!=='年休案') return false; // 年休・年休案のみ対象
         const r = requests[s.id]?.[d];
         const str = requestStrength[s.id]?.[d];
         if(r==='off' && str==='strong') return false; // 必須休み希望は外せない
@@ -1039,7 +1039,7 @@ function autoFixWarnings(){
         need--; fixed++;
       }
     }
-    // 夜勤不足の修正：公休/年休スタッフから（簡易チェック）
+    // 夜勤不足の修正：年休スタッフのみ振り替え対象（公休・祝は除外）
     const nm = w.match(nightShortRe);
     if(nm){
       const d = parseInt(nm[1]);
@@ -1047,7 +1047,7 @@ function autoFixWarnings(){
       const cands = staff.filter(s=>{
         const a = schedule[s.id]?.[d];
         if(!a) return false;
-        if(a.type!=='公'&&a.type!=='年休') return false;
+        if(a.type!=='年休' && a.type!=='年休案') return false; // 年休・年休案のみ対象
         if(s.night===false) return false;
         const r = requests[s.id]?.[d];
         const str = requestStrength[s.id]?.[d];
@@ -1775,17 +1775,51 @@ function generateSchedule(locks={}){
       }
     }
   });
-  // 月末チェック
+  // ── 月末全ルール検証 ──
   STAFF.forEach(s=>{
     if(s.weekendOff) return;
+    const sid = s.id;
+    // 公休・祝クォータチェック（超過・不足どちらも検出）
     let kouUsed=0, shukuUsed=0;
-    for(let d=1; d<=DAYS; d++){ const t=schedule[s.id][d].type; if(t==='公')kouUsed++; else if(t==='祝')shukuUsed++; }
+    for(let d=1; d<=DAYS; d++){ const t=schedule[sid][d]?.type; if(t==='公')kouUsed++; else if(t==='祝')shukuUsed++; }
     const mandatoryUsed = kouUsed + shukuUsed;
     const mandatoryRequired = kouQuota + shukuQuota;
-    if(mandatoryUsed < mandatoryRequired){
-      warnings.push(`🚨 ${s.name}：公休・祝の合計${mandatoryRequired}日のうち${mandatoryUsed}日しか消化できませんでした（働く日が多すぎる可能性があります）。`);
+    if(mandatoryUsed < mandatoryRequired)
+      warnings.push(`🚨 ${s.name}：公休・祝の合計${mandatoryRequired}日のうち${mandatoryUsed}日しか確保できませんでした。`);
+    if(mandatoryUsed > mandatoryRequired)
+      warnings.push(`⚠️ ${s.name}：公休・祝の合計が定数${mandatoryRequired}日を超えています（${mandatoryUsed}日）。`);
+    // 遅B月3回上限
+    let lateCount=0;
+    for(let d=1; d<=DAYS; d++){ if(schedule[sid][d]?.type==='late') lateCount++; }
+    if(lateCount > LATE_CAP)
+      warnings.push(`⚠️ ${s.name}：遅B回数${lateCount}回が月上限${LATE_CAP}回を超えています。`);
+    // 連続勤務5日上限（明け・休みをリセット）
+    let consec=0;
+    for(let d=1; d<=DAYS; d++){
+      const t=schedule[sid][d]?.type;
+      const isWork = t==='night'||t==='day'||t==='late'||t==='late2';
+      const isRest = !isWork;
+      if(isWork){ consec++; if(consec>5) warnings.push(`⚠️ ${s.name}：${d}日時点で連続勤務が${consec}日になっています（上限5日）。`); }
+      else { consec=0; }
+    }
+    // 夜勤回数チェック
+    if(sid !== nightOnlyId){
+      let nc=0;
+      for(let d=1; d<=DAYS; d++){ if(schedule[sid][d]?.type==='night') nc++; }
+      const cap = nightCapEffective(s);
+      if(nc > cap) warnings.push(`🚨 ${s.name}：夜勤${nc}回が上限${cap}回を超えています。`);
     }
   });
+  // 日勤リーダー検証（平日：A・B各チーム1名以上）
+  for(let d=1; d<=DAYS; d++){
+    if(isWeekendOrHoliday(d)) continue;
+    const dayWorkers = STAFF.filter(s=> schedule[s.id]?.[d]?.type==='day');
+    for(const team of ['A','B']){
+      const teamWorkers = dayWorkers.filter(s=>s.team===team);
+      if(teamWorkers.length>=2 && !teamWorkers.some(s=>s.leader))
+        warnings.push(`📋 ${d}日(${dowLabel(d)})：${team}チームの日勤リーダーが確保できていません。`);
+    }
+  }
   // 土日2連休チェック
   STAFF.forEach(s=>{
     if(s.weekendOff || s.id===nightOnlyId) return;
@@ -2176,7 +2210,7 @@ function generateDefaultRulesHtml(){
     <li>勤務表の自動生成は最大5回繰り返し、警告が最も少ない結果を採用する</li>
     <li>警告の重み付け：🚨重大警告×10点、⚠️警告×3点、📋情報×1点。合計スコアが最小の結果を選択</li>
     <li>生成後に「🔧 警告を自動修正する」ボタンで日勤・夜勤不足を自動的に解消できる</li>
-    <li>自動修正は必須希望（🔒）以外の公休・年休スタッフから振り替えを行う</li>
+    <li>自動修正の振り替え対象は「年休」「年休案」スタッフのみ（公休・祝は対象外）。必須希望（🔒）も除外</li>
   </ul>
   <p><strong>【夜勤専従（夜勤専従タブで月ごとに設定）】</strong></p>
   <ul>
