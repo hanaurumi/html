@@ -1500,23 +1500,23 @@ function generateSchedule(locks={}){
         excess--;
       }
     }
-    // 日勤リーダー・師長代行確保（dayMax超過時は警告のみ、リーダーのみ優先追加）
+    // 日勤リーダー・師長代行確保（dayMax・consec超過時は警告のみ）
     (function ensureDayLeaders(){
       const atMax = ()=> req.dayMax != null && dayList.length >= req.dayMax;
+      const canAdd = (s)=> !atMax() && state[s.id].consec < 5;
       if(isWeekendOrHoliday(d)){
         // 土日祝日：リーダー1名のみ必要（師長代行の確保は不要）
         let haveLeader = dayList.some(s=>s.leader);
         if(!haveLeader){
-          const idx = restFromFlexible.findIndex(s=>s.leader);
+          const idx = restFromFlexible.findIndex(s=>s.leader && canAdd(s));
           if(idx>=0){
-            if(atMax()){
-              warnings.push(`${d}日(${dowLabel(d)})：日勤上限のためリーダーを追加できませんでした。`);
-            } else {
-              const cand = restFromFlexible.splice(idx,1)[0];
-              dayAssign[cand.id]={type:'day'}; dayList.push(cand);
-            }
+            const cand = restFromFlexible.splice(idx,1)[0];
+            dayAssign[cand.id]={type:'day'}; dayList.push(cand);
           } else {
-            warnings.push(`${d}日(${dowLabel(d)})：日勤のリーダーが不足しています。`);
+            const hasAny = restFromFlexible.some(s=>s.leader);
+            warnings.push(hasAny
+              ? `${d}日(${dowLabel(d)})：日勤上限または連続勤務制限のためリーダーを追加できませんでした。`
+              : `${d}日(${dowLabel(d)})：日勤のリーダーが不足しています。`);
           }
         }
       } else {
@@ -1524,30 +1524,25 @@ function generateSchedule(locks={}){
         ['A','B'].forEach(team=>{
           const haveTeamLeader = dayList.some(s=>s.leader && s.team===team);
           if(!haveTeamLeader){
-            const idx = restFromFlexible.findIndex(s=>s.leader && s.team===team);
+            const idx = restFromFlexible.findIndex(s=>s.leader && s.team===team && canAdd(s));
             if(idx>=0){
-              if(atMax()){
-                warnings.push(`${d}日(${dowLabel(d)})：日勤上限のため${team}チームリーダーを追加できませんでした。`);
-              } else {
-                const cand = restFromFlexible.splice(idx,1)[0];
-                dayAssign[cand.id]={type:'day'}; dayList.push(cand);
-              }
+              const cand = restFromFlexible.splice(idx,1)[0];
+              dayAssign[cand.id]={type:'day'}; dayList.push(cand);
             } else {
-              warnings.push(`${d}日(${dowLabel(d)})：${team}チームの日勤リーダーが不足しています。`);
+              const hasAny = restFromFlexible.some(s=>s.leader && s.team===team);
+              warnings.push(hasAny
+                ? `${d}日(${dowLabel(d)})：日勤上限または連続勤務制限のため${team}チームリーダーを追加できませんでした。`
+                : `${d}日(${dowLabel(d)})：${team}チームの日勤リーダーが不足しています。`);
             }
           }
         });
-        // 平日：師長または師長代行を日勤に1名確保する（dayMax超過時はスキップ）
+        // 平日：師長または師長代行を日勤に1名確保する（dayMax・consec超過時はスキップ）
         const haveChief = dayList.some(s=>isHeadNurse(s)||s.actingChief);
         if(!haveChief){
-          const idx = restFromFlexible.findIndex(s=>isHeadNurse(s)||s.actingChief);
+          const idx = restFromFlexible.findIndex(s=>(isHeadNurse(s)||s.actingChief) && canAdd(s));
           if(idx>=0){
-            if(atMax()){
-              warnings.push(`${d}日(${dowLabel(d)})：日勤上限のため師長・師長代行を追加できませんでした。`);
-            } else {
-              const cand = restFromFlexible.splice(idx,1)[0];
-              dayAssign[cand.id]={type:'day'}; dayList.push(cand);
-            }
+            const cand = restFromFlexible.splice(idx,1)[0];
+            dayAssign[cand.id]={type:'day'}; dayList.push(cand);
           } else {
             warnings.push(`${d}日(${dowLabel(d)})：平日日勤に師長・師長代行が確保できませんでした。`);
           }
@@ -1742,6 +1737,33 @@ function generateSchedule(locks={}){
         if(changed) break; // 1件変換したら再ソートして再試行
       }
     }
+  })();
+  // 連続勤務違反（5日超）を検出し強制的に休みに変換する安全パス
+  (function fixConsecutiveViolations(){
+    const WORK_TYPES = new Set(['night','day','late','late2']);
+    STAFF.forEach(s=>{
+      if(s.id===nightOnlyId) return; // 夜勤専従は別ルール
+      let consec=0;
+      for(let d=1; d<=DAYS; d++){
+        const t = schedule[s.id][d]?.type;
+        const isWork = WORK_TYPES.has(t);
+        if(isWork){
+          consec++;
+          if(consec > 5 && !manualLocks[s.id]?.[d]){
+            // 連続6日目以上：年休または公に変換
+            const cap = nenkyuCapDefault + nenkyuExtra(s);
+            const nenkyuUsed = Object.values(schedule[s.id]).filter(v=>v?.type==='年休').length;
+            const label = nenkyuUsed < cap ? '年休' : '公';
+            schedule[s.id][d] = {type:label, leader:false};
+            if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
+            warnings.push(`⚠️ ${s.name}：${d}日の連続勤務超過（${consec}日目）を${label}に自動変換しました。`);
+            consec=0;
+          }
+        } else {
+          consec=0;
+        }
+      }
+    });
   })();
   // 夜勤専従の休みラベル確定（restPendingSpecial → 公/祝/特）
   if(nightOnlyId && STAFF_MAP[nightOnlyId]){
