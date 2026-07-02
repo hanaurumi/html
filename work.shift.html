@@ -1552,6 +1552,45 @@ function generateSchedule(locks={}){
         excess--;
       }
     }
+    // 土日祝：日勤メンバーのA/Bチームを可能な限り均等化
+    if(isWeekendOrHoliday(d)){
+      (function balanceWeekendDayTeams(){
+        const countA = ()=> dayList.filter(s=>s.team==='A').length;
+        const countB = ()=> dayList.filter(s=>s.team==='B').length;
+        // dayMax上限以内かつconsec<5であれば交換・追加で均等化を試みる
+        const atMax = ()=> req.dayMax != null && dayList.length >= req.dayMax;
+        const canAdd = (s)=> !atMax() && state[s.id].consec < 5;
+        // 過多チームの非リーダーを除いて不足チームから補充
+        for(let iter=0; iter<3; iter++){
+          const cA = countA(), cB = countB();
+          if(Math.abs(cA-cB) <= 1) break;
+          const overTeam  = cA > cB ? 'A' : 'B';
+          const underTeam = cA > cB ? 'B' : 'A';
+          // 不足チームから追加できる人を探す
+          const addCand = restFromFlexible.find(s=> s.team===underTeam && canAdd(s));
+          // 過多チームの非リーダーを除外候補に
+          const removeCand = dayList.find(s=> s.team===overTeam && !s.leader && !s.weekendOff);
+          if(addCand && (atMax() ? removeCand : true)){
+            if(atMax() && removeCand){
+              // 上限到達：過多チームの1名と交換
+              delete dayAssign[removeCand.id];
+              dayList = dayList.filter(x=>x!==removeCand);
+              restFromFlexible.push(removeCand);
+            }
+            restFromFlexible = restFromFlexible.filter(x=>x!==addCand);
+            dayAssign[addCand.id] = {type:'day'};
+            dayList.push(addCand);
+          } else {
+            break;
+          }
+        }
+        // 最終的なA/Bバランスが2名差以上なら情報警告
+        const diffAB = Math.abs(countA()-countB());
+        if(diffAB >= 2){
+          warnings.push(`📋 ${d}日(${dowLabel(d)})：土日祝日勤のチームバランス A${countA()}名/B${countB()}名（均等化できませんでした）`);
+        }
+      })();
+    }
     // 日勤リーダー・師長代行確保（dayMax・consec超過時は警告のみ）
     (function ensureDayLeaders(){
       const atMax = ()=> req.dayMax != null && dayList.length >= req.dayMax;
@@ -2249,7 +2288,8 @@ function generateDefaultRulesHtml(){
     <li>土日・祝日の夜勤は常に3人夜勤（4人夜勤は選択不可）。遅Bを付けるかどうかは①基本設定タブで選択</li>
     <li>平日の夜勤体制：①基本設定タブの「曜日ごとの夜勤パターン」で変更可（A=4人夜勤(遅Bなし)、B=3人夜勤+遅B1人）</li>
     <li>日勤の必要人数：平日 ${weekdayDayMin}名以上${weekdayDayMax!=null?' '+weekdayDayMax+'名以下':'（上限なし）'}、土日祝日 ${weekendDayMin}名以上${weekendDayMax!=null?' '+weekendDayMax+'名以下':'（上限なし）'}（①基本設定タブで変更可）</li>
-    <li>日勤のリーダー人数：平日はAチーム・Bチームそれぞれ1名以上（チームに2名以上いる場合のみ）、土日祝日はチーム問わず1名以上</li>
+    <li>日勤のリーダー人数：平日はAチーム・Bチームそれぞれ1名以上（チームに2名以上いる場合のみ）、土日祝日はチーム問わず1名以上（必須）</li>
+    <li>土日祝日の日勤メンバーはA・Bチームを可能な限り均等に配置する（2名差以上になる場合は警告）</li>
     <li>夜勤のリーダー：1名のみ配置。3人夜勤の場合、A・Bそれぞれにリーダーを置く必要はなく、人数の多い側のチーム（2名）から1名リーダーを出せば条件クリア</li>
     <li>平日日勤の師長代行：②スタッフタブで「師長代行可否」をチェックした人を必ず1名確保。結果表では◆マークで表示</li>
   </ul>
