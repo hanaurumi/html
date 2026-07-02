@@ -152,6 +152,30 @@
       </div>
     </section>
     <section>
+      <h2>夜勤の新人制限</h2>
+      <p class="note">3人夜勤（土日祝）に1年目・2年目を入れる上限人数を設定します。0＝完全除外（既定）。</p>
+      <div class="field-row">
+        <label>3人夜勤（土日祝）の1・2年目上限</label>
+        <input type="number" id="threeNightJuniorMaxInput" min="0" max="2" style="width:80px;" value="0">
+        <span class="note" style="margin:0;">人（0=完全除外）</span>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
+      </div>
+    </section>
+    <section>
+      <h2>今月の公休数</h2>
+      <p class="note">月の公休日数（土日の休み）を手動で設定します。祝日はカレンダーから自動カウントされます。合計が「公休＋祝日」の月間保証休み数になります。超過分は年休として計上されます。</p>
+      <div class="field-row">
+        <label>公休数（土日休み）</label>
+        <input type="number" id="kouQuotaOverrideInput" min="0" max="20" style="width:80px;" placeholder="自動">
+        <span class="note" style="margin:0;" id="kouQuotaAutoNote"></span>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
+      </div>
+    </section>
+    <section>
       <h2>日勤の必要人数</h2>
       <div class="field-row">
         <label>平日の日勤（最低人数）</label>
@@ -374,6 +398,8 @@ let weekendDayMin = 6;
 let weekendDayMax = null;
 let nenkyuCapDefault = 2;
 let nenkyuMinDefault = 1;
+let kouQuotaOverride = null; // null=自動計算（土日数）、数値=手動設定
+let threeNightJuniorMax = 0; // 3人夜勤（土日祝）に入れる1・2年目の上限（0=完全除外）
 let staffOverrides = {};
 let requests = {};
 let requestStrength = {}; // {[staffId]: {[day]: 'strong'|'soft'}}  strong=必須, soft=できれば
@@ -487,6 +513,8 @@ function computeQuotas(){
     if(isHoliday(d)) shuku++;
     else if(isWeekend(d)) kou++;
   }
+  // 手動設定があれば公休数を上書き（祝日数はカレンダー自動カウントを使用）
+  if(kouQuotaOverride !== null) kou = kouQuotaOverride;
   return {kou, shuku};
 }
 /* ===================== スタッフデータ ===================== */
@@ -577,6 +605,8 @@ async function loadSettings(){
       weekendDayMax = (s.weekendDayMax != null) ? s.weekendDayMax : null;
       nenkyuCapDefault = (s.nenkyuCapDefault!==undefined && s.nenkyuCapDefault!==null) ? s.nenkyuCapDefault : 2;
       nenkyuMinDefault = (s.nenkyuMinDefault!==undefined && s.nenkyuMinDefault!==null) ? s.nenkyuMinDefault : 1;
+      kouQuotaOverride = (s.kouQuotaOverride!==undefined && s.kouQuotaOverride!==null) ? s.kouQuotaOverride : null;
+      threeNightJuniorMax = (s.threeNightJuniorMax!==undefined) ? s.threeNightJuniorMax : 0;
       staffOverrides = s.staffOverrides || {};
     }
   }catch(e){}
@@ -588,7 +618,7 @@ function saveSettings(){
     try{
       lsSet(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
-        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekdayDayMax, weekendDayMin, weekendDayMax, nenkyuCapDefault, nenkyuMinDefault, staffOverrides
+        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekdayDayMax, weekendDayMin, weekendDayMax, nenkyuCapDefault, nenkyuMinDefault, kouQuotaOverride, threeNightJuniorMax, staffOverrides
       }));
     }catch(e){}
   }, 300);
@@ -670,6 +700,19 @@ function renderDayMinInputs(){
   document.getElementById('weekendDayMaxInput').value = weekendDayMax != null ? weekendDayMax : '';
   document.getElementById('nenkyuCapInput').value = nenkyuCapDefault;
   document.getElementById('nenkyuMinInput').value = nenkyuMinDefault;
+  document.getElementById('threeNightJuniorMaxInput').value = threeNightJuniorMax;
+  // 公休数設定
+  document.getElementById('kouQuotaOverrideInput').value = kouQuotaOverride !== null ? kouQuotaOverride : '';
+  // 自動計算値を参考表示
+  let autoKou=0, autoShuku=0;
+  const dim = daysInMonth();
+  for(let d=1;d<=dim;d++){
+    if(isHoliday(d)) autoShuku++;
+    else if(isWeekend(d)) autoKou++;
+  }
+  const total = (kouQuotaOverride !== null ? kouQuotaOverride : autoKou) + autoShuku;
+  document.getElementById('kouQuotaAutoNote').textContent =
+    `日（空欄=自動：${autoKou}日）　祝日：${autoShuku}日　合計保証休み：${total}日`;
 }
 function renderCalOverrideGrid(){
   const grid = document.getElementById('calOverrideGrid');
@@ -727,6 +770,10 @@ function saveAndRerenderSettings(){
   nenkyuMinDefault = parseInt(document.getElementById('nenkyuMinInput').value,10);
   if(isNaN(nenkyuMinDefault) || nenkyuMinDefault<0) nenkyuMinDefault = 1;
   nenkyuMinDefault = Math.min(nenkyuMinDefault, nenkyuCapDefault); // 最低保証は上限を超えない
+  const _kouOv = document.getElementById('kouQuotaOverrideInput').value;
+  kouQuotaOverride = _kouOv !== '' ? (parseInt(_kouOv,10) ?? null) : null;
+  threeNightJuniorMax = parseInt(document.getElementById('threeNightJuniorMaxInput').value,10);
+  if(isNaN(threeNightJuniorMax)||threeNightJuniorMax<0) threeNightJuniorMax=0;
   saveSettings();
   renderPeriodLabel();
   renderCalOverrideGrid();
@@ -1240,8 +1287,13 @@ function generateSchedule(locks={}){
   }
   function canAddToNight(s, currentList, requiredNight, avoidDouble2nd){
     if(!isJunior(s)) return true;
-    // 3人夜勤（土日祝）は1年目・2年目を一切含めない
-    if(requiredNight < 4) return false;
+    if(requiredNight < 4){
+      // 3人夜勤（土日祝）：設定上限 threeNightJuniorMax まで許可
+      const juniorCount = currentList.filter(isJunior).length;
+      if(juniorCount >= threeNightJuniorMax) return false;
+      if(s.exp==='1st' && currentList.some(x=>x.exp==='1st')) return false;
+      return true;
+    }
     // 4人夜勤（平日）：1年目+2年目合計2名まで、1年目は同時1名まで
     const juniorCount = currentList.filter(isJunior).length;
     if(juniorCount >= 2) return false;
@@ -1706,37 +1758,48 @@ function generateSchedule(locks={}){
       if(label==='年休'){ state[s.id].otherCount++; teamOtherCount[s.team]++; }
     });
   });
-  // 年休均等化パス：年休0の人に対し日勤→年休を変換してバランスを取る
-  (function balanceNenkyu(){
-    const targets = STAFF.filter(s=>!s.weekendOff && s.id!==nightOnlyId);
-    // 現在の年休数を集計
-    function nenkyuCount(s){
-      let n=0; for(let d=1;d<=DAYS;d++){ if(schedule[s.id][d]?.type==='年休') n++; } return n;
-    }
-    // 均等化: 年休が少ない人から順に、上限まで付与を試みる
-    // 全員の平均を目標とせず「上限内で付与できる人には付与」方針
-    let changed = true;
-    while(changed){
-      changed = false;
-      // 年休数が少ない順にソート
-      const sorted = [...targets].sort((a,b)=>nenkyuCount(a)-nenkyuCount(b));
-      for(const s of sorted){
-        const cap = nenkyuCapDefault + nenkyuExtra(s);
-        if(nenkyuCount(s) >= cap) continue;
-        // 平日日勤の日を探して年休に変換（月初から順に試す）
-        for(let d=1; d<=DAYS; d++){
-          if(canConvertDayToNenkyu(s, d)){
-            schedule[s.id][d] = {type:'年休', leader:false};
-            state[s.id].workCount = Math.max(0, state[s.id].workCount-1);
-            state[s.id].otherCount++;
-            teamOtherCount[s.team]++;
-            changed = true;
-            break;
-          }
+  // 土日2連休 確保パス：土曜・日曜が両方休みのペアが1つもない場合、日勤を休みに変換して確保
+  (function enforceWeekendPair(){
+    const REST_TYPES = new Set(['公','祝','年休','rest']);
+    const isOff = t => REST_TYPES.has(t);
+    STAFF.forEach(s=>{
+      if(s.weekendOff || s.id===nightOnlyId) return;
+      // 既に土日2連休があるか確認
+      for(let d=1; d<=DAYS-1; d++){
+        if(getDow(d)===6){
+          const t1=schedule[s.id][d]?.type, t2=schedule[s.id][d+1]?.type;
+          if(isOff(t1) && isOff(t2)) return; // 既に確保済み
         }
-        if(changed) break; // 1件変換したら再ソートして再試行
       }
-    }
+      // 土日2連休を確保できていない → 日勤の土日ペアを探して変換
+      for(let d=1; d<=DAYS-1; d++){
+        if(getDow(d)!==6) continue;
+        const d2 = d+1;
+        if(d2>DAYS) continue;
+        if(manualLocks[s.id]?.[d] || manualLocks[s.id]?.[d2]) continue;
+        const t1=schedule[s.id][d]?.type, t2=schedule[s.id][d2]?.type;
+        const canSat = (t1==='day'||isOff(t1));
+        const canSun = (t2==='day'||isOff(t2));
+        if(!canSat || !canSun) continue;
+        // dayMin を確認（変換対象が日勤の場合のみチェック）
+        const reqSat = requiredCounts(d), reqSun = requiredCounts(d2);
+        const dcSat = currentDayCount(d), dcSun = currentDayCount(d2);
+        if(t1==='day' && dcSat <= reqSat.day) continue;
+        if(t2==='day' && dcSun <= reqSun.day) continue;
+        // 変換実行
+        const cap = nenkyuCapDefault + nenkyuExtra(s);
+        const nenkyuUsed = d=>Object.values(schedule[s.id]).filter(v=>v?.type==='年休').length;
+        const toLabel = (day, t) => {
+          if(isOff(t)) return null; // 既に休み
+          const nl = nenkyuUsed() < cap ? '年休' : '公';
+          return nl;
+        };
+        const lbl1 = toLabel(d, t1), lbl2 = toLabel(d2, t2);
+        if(lbl1){ schedule[s.id][d]={type:lbl1,leader:false}; if(lbl1==='年休'){state[s.id].otherCount++;teamOtherCount[s.team]++;} }
+        if(lbl2){ schedule[s.id][d2]={type:lbl2,leader:false}; if(lbl2==='年休'){state[s.id].otherCount++;teamOtherCount[s.team]++;} }
+        break; // 1ペア確保したら終了
+      }
+    });
   })();
   // 連続勤務違反（5日超）を検出し強制的に休みに変換する安全パス
   (function fixConsecutiveViolations(){
@@ -2166,66 +2229,69 @@ function resetRulesToDefault(){
 function generateDefaultRulesHtml(){
   const {kou, shuku} = computeQuotas();
   return `
-  <p><strong>【勤務のつながり（固定ルール）】</strong></p>
+  <p><strong>【優先順位】</strong></p>
+  <ol>
+    <li><strong>絶対ルール</strong>：夜勤→明け→公休サイクル、連続勤務5日以内、夜勤・遅B回数上限、夜勤最低人数</li>
+    <li><strong>人数配置</strong>：日勤最低人数（dayMin）確保 → 日勤上限（dayMax）遵守（年休を増やすより dayMax 優先）</li>
+    <li><strong>休みの保証</strong>：公休・祝日の合計を月間保証数どおりに確保</li>
+    <li><strong>土日2連休</strong>：月1回必須（生成後に自動確保）</li>
+    <li><strong>リーダー・師長代行</strong>：日勤の人員確保（dayMax・連続勤務制限が優先）</li>
+    <li><strong>年休の公平配分</strong>：dayMax 到達後の余剰分を偏りなく配分（希望日優先）</li>
+    <li><strong>勤務希望の反映</strong>：必須 → 最優先、できれば → 可能な範囲</li>
+  </ol>
+  <p><strong>【勤務のつながり（絶対ルール）】</strong></p>
   <ul>
     <li>基本は「夜勤→明け→公休」を1クールとして勤務表を組む</li>
-    <li>夜勤の翌日は必ず明け（夜勤専従・通常勤務ともに同様、夜夜は不可）</li>
+    <li>夜勤の翌日は必ず明け（夜勤専従・通常勤務ともに同様、連続夜勤は不可）</li>
     <li>明けは勤務扱い。明けの翌日は必ず公休（夜勤専従を除く）</li>
-    <li>勤務の流れ：夜勤→明け→公休（基本）、または夜勤→明け→夜勤→明け→公休→公休（月9回確保が必要な場合のみ）</li>
-    <li>休みは公休と同様の扱い（公休・祝・年休として集計）</li>
-    <li>遅Bの翌日は夜勤または休みのみ</li>
-    <li>連続勤務は最大5日まで</li>
+    <li>遅Bの翌日は夜勤または休みのみ（日勤は不可）</li>
+    <li>連続勤務は最大5日まで（違反時は自動で休みに変換）</li>
   </ul>
   <p><strong>【チームバランス（固定ルール）】</strong></p>
   <ul>
     <li>夜勤メンバーが全員同一チームにならないよう調整する（4人夜勤でもA4:B0・B4:A0は不可）</li>
-    <li>リーダー選出はチーム人数が2名以上の側を優先（夜勤・日勤ともに）。日勤はA・B両チームへの配置が目標だが、夜勤はリーダー1名のみ（A・B両方に置く必要はない）。</li>
-    <li>平日の日勤には師長または師長代行（②スタッフタブで「師長代行可否」にチェックした人）を必ず1名確保する。土日祝日は不要（リーダーのみ）</li>
+    <li>日勤はA・B両チームにリーダーを配置。夜勤はリーダー1名のみ（人数の多いチームから優先）</li>
+    <li>平日の日勤には師長または師長代行を必ず1名確保する（土日祝日は不要）。dayMax・連続勤務制限が優先</li>
   </ul>
   <p><strong>【人数配置（現在の設定値）】</strong></p>
   <ul>
-    <li>土日・祝日の夜勤は常に3人夜勤（4人夜勤は選択不可）。遅Bを付けるかどうかは①基本設定タブで選択</li>
-    <li>平日の夜勤体制：①基本設定タブの「曜日ごとの夜勤パターン」で変更可（A=4人夜勤(遅Bなし)、B=3人夜勤+遅B1人）</li>
-    <li>日勤の必要人数：平日${weekdayDayMin}名以上${weekdayDayMax!=null?weekdayDayMax+'名以下':'上限なし'}、土日祝日${weekendDayMin}名以上${weekendDayMax!=null?weekendDayMax+'名以下':'上限なし'}（①基本設定タブで変更可）</li>
-    <li>日勤のリーダー人数：平日はAチーム・Bチームそれぞれ1名以上（チームに2名以上いる場合のみ）、土日祝日はチーム問わず1名以上</li>
-    <li>夜勤のリーダー：1名のみ配置。3人夜勤の場合、A・Bそれぞれにリーダーを置く必要はなく、人数の多い側のチーム（2名）から1名リーダーを出せば条件クリア。</li>
-    <li>平日日勤の師長代行：②スタッフタブで「師長代行可否」をチェックした人を必ず1名確保。結果表では◆マークで表示</li>
+    <li>土日・祝日の夜勤は常に3人夜勤。遅Bを付けるかどうかは①基本設定タブで選択</li>
+    <li>平日の夜勤体制：①基本設定タブの「曜日ごとの夜勤パターン」で変更可（A=4人夜勤, B=3人夜勤+遅B）</li>
+    <li>日勤の必要人数：平日 ${weekdayDayMin}名以上${weekdayDayMax!=null?' '+weekdayDayMax+'名以下':'（上限なし）'}、土日祝日 ${weekendDayMin}名以上${weekendDayMax!=null?' '+weekendDayMax+'名以下':'（上限なし）'}（①基本設定タブで変更可）</li>
+    <li>日勤上限（dayMax）は年休より優先して遵守する。dayMax に余裕がある日は日勤を優先し、余裕がない日のみ年休を付与</li>
+    <li>平日日勤の師長代行：②スタッフタブで「師長代行可否」をチェックした人を確保。結果表では◆マークで表示</li>
   </ul>
   <p><strong>【個人の回数上限（固定）】</strong></p>
   <ul>
     <li>夜勤：月5回まで（副看護師長は月4回まで、1年目は月2回まで）</li>
     <li>遅B：月3回まで</li>
   </ul>
-  <p><strong>【夜勤内の経験者バランス（固定）】</strong></p>
+  <p><strong>【夜勤内の経験者バランス（設定可）】</strong></p>
   <ul>
-    <li>4人夜勤（平日のみ）：1年目＋2年目の合計2名まで（1年目が同時に2名になることは不可）</li>
-    <li>3人夜勤（土日祝日含む）：1年目＋2年目の合計1名まで</li>
+    <li>4人夜勤（平日のみ）：1年目＋2年目の合計2名まで（1年目が同時に2名は不可）</li>
+    <li>3人夜勤（土日祝）：1・2年目の上限 ${threeNightJuniorMax}名（現在の設定値。①基本設定タブで変更可）</li>
   </ul>
   <p><strong>【公休・祝・年休（現在の月：${currentYear}年${currentMonth}月）】</strong></p>
   <ul>
-    <li>公休・祝日は月間の必須休みとして合算して管理する（今月：公休${kou}日＋祝${shuku}日＝計${kou+shuku}日）</li>
-    <li>休みのラベルは実際の日付タイプで決定：祝日 → 祝、土日 → 公、平日の余剰休み → 年休</li>
-    <li>土日・祝日の休みは人員不足でも日勤に変換しない（平日の余剰休みのみ日勤に振り替える）</li>
-    <li>年休の上限：1人あたり月${nenkyuCapDefault}回（①基本設定タブで変更可）。下限は設けない</li>
-    <li>年休案の提案数：${nenkyuMinDefault}回（0の場合は提案なし）。提案は候補表示のみで自動確保はしない</li>
-    <li>年休は公休クォータを全て消化してから付与する。土日だけで公休が埋まらない場合は平日の休みを先に公休として使う</li>
-    <li>土日2連休は月1回、自動生成時にできるだけ確保するよう試みる</li>
+    <li>今月の保証休み：公休 ${kou}日＋祝 ${shuku}日＝計 ${kou+shuku}日（公休数は①基本設定タブで手動変更可）</li>
+    <li>ラベルの優先順位：祝日 → 祝、土日 → 公、平日の余剰休み → 年休</li>
+    <li>土日・祝日の休みは日勤に変換しない（平日の余剰休みのみ日勤に振り替える）</li>
+    <li>年休の上限：1人あたり月 ${nenkyuCapDefault}回（①基本設定タブで変更可）。dayMax 到達後の余剰分のみ付与</li>
+    <li>年休は余剰がある人から順に公平に配分する。手動での追加・変更も可能</li>
+    <li><strong>土日2連休：月1回必須。</strong>確保できていない場合、生成後に自動で確保を試みる（dayMin を維持できる範囲で）</li>
   </ul>
   <p><strong>【勤務希望の反映ルール】</strong></p>
   <ul>
     <li>希望には「🔒必須」と「〜できれば」の2段階がある（③希望入力タブで各セルの強度を切り替え可）</li>
     <li>🔒必須：夜勤・日勤の希望は最優先で反映。人員調整による変更は行わない</li>
-    <li>🔒必須の休み希望（公休）は自動修正の振り替え対象から除外する</li>
+    <li>🔒必須の休み希望は自動修正の振り替え対象から除外する</li>
     <li>〜できれば：原則反映するが、夜勤などで人数が不足する場合は振り替えの対象になる場合がある</li>
     <li>夏季休暇希望（夏）：年間上限5回まで反映。月をまたいで分割取得可能</li>
     <li>開院記念日希望（開）：9/16以降のみ取得可能。年度内（4月〜3月）1回取得義務あり</li>
   </ul>
   <p><strong>【組み合わせNG条件（②スタッフタブで設定）】</strong></p>
   <ul>
-    <li>特定の2名が同じ日に同じ勤務に就かないよう制限できる</li>
-    <li>同日夜勤NG：指定した2名が同じ日の夜勤に入らない</li>
-    <li>同日日勤NG：指定した2名が同じ日の日勤に入らない</li>
-    <li>同日全勤務NG：指定した2名が同じ日のいかなる勤務にも入らない</li>
+    <li>特定の2名が同じ日に同じ勤務に就かないよう制限できる（同日夜勤NG・同日日勤NG・同日全勤務NG）</li>
     <li>NG条件を守れない場合（人員が極端に少ない等）は警告を出した上で配置する</li>
   </ul>
   <p><strong>【前月末の引き継ぎ（③希望入力タブで設定）】</strong></p>
@@ -2239,8 +2305,7 @@ function generateDefaultRulesHtml(){
   <ul>
     <li>勤務表の自動生成は最大5回繰り返し、警告が最も少ない結果を採用する</li>
     <li>警告の重み付け：🚨重大警告×10点、⚠️警告×3点、📋情報×1点。合計スコアが最小の結果を選択</li>
-    <li>生成後に「🔧 警告を自動修正する」ボタンで日勤・夜勤不足を自動的に解消できる</li>
-    <li>自動修正の振り替え対象は「年休」「年休案」スタッフのみ（公休・祝は対象外）。必須希望（🔒）も除外</li>
+    <li>生成後に「🔧 警告を自動修正する」ボタンで日勤・夜勤不足を自動的に解消できる（年休のみ振り替え対象、公休・祝・必須希望は除外）</li>
   </ul>
   <p><strong>【夜勤専従（夜勤専従タブで月ごとに設定）】</strong></p>
   <ul>
