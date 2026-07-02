@@ -152,6 +152,18 @@
       </div>
     </section>
     <section>
+      <h2>今月の公休数</h2>
+      <p class="note">月の公休日数（土日の休み）を手動で設定します。祝日はカレンダーから自動カウントされます。合計が「公休＋祝日」の月間保証休み数になります。超過分は年休として計上されます。</p>
+      <div class="field-row">
+        <label>公休数（土日休み）</label>
+        <input type="number" id="kouQuotaOverrideInput" min="0" max="20" style="width:80px;" placeholder="自動">
+        <span class="note" style="margin:0;" id="kouQuotaAutoNote"></span>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="saveAndRerenderSettings()">この設定を反映する</button>
+      </div>
+    </section>
+    <section>
       <h2>日勤の必要人数</h2>
       <div class="field-row">
         <label>平日の日勤（最低人数）</label>
@@ -374,6 +386,7 @@ let weekendDayMin = 6;
 let weekendDayMax = null;
 let nenkyuCapDefault = 2;
 let nenkyuMinDefault = 1;
+let kouQuotaOverride = null; // null=自動計算（土日数）、数値=手動設定
 let staffOverrides = {};
 let requests = {};
 let requestStrength = {}; // {[staffId]: {[day]: 'strong'|'soft'}}  strong=必須, soft=できれば
@@ -487,6 +500,8 @@ function computeQuotas(){
     if(isHoliday(d)) shuku++;
     else if(isWeekend(d)) kou++;
   }
+  // 手動設定があれば公休数を上書き（祝日数はカレンダー自動カウントを使用）
+  if(kouQuotaOverride !== null) kou = kouQuotaOverride;
   return {kou, shuku};
 }
 /* ===================== スタッフデータ ===================== */
@@ -577,6 +592,7 @@ async function loadSettings(){
       weekendDayMax = (s.weekendDayMax != null) ? s.weekendDayMax : null;
       nenkyuCapDefault = (s.nenkyuCapDefault!==undefined && s.nenkyuCapDefault!==null) ? s.nenkyuCapDefault : 2;
       nenkyuMinDefault = (s.nenkyuMinDefault!==undefined && s.nenkyuMinDefault!==null) ? s.nenkyuMinDefault : 1;
+      kouQuotaOverride = (s.kouQuotaOverride!==undefined && s.kouQuotaOverride!==null) ? s.kouQuotaOverride : null;
       staffOverrides = s.staffOverrides || {};
     }
   }catch(e){}
@@ -588,7 +604,7 @@ function saveSettings(){
     try{
       lsSet(SETTINGS_KEY, JSON.stringify({
         currentYear, currentMonth, weekdayPattern, holidayPattern,
-        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekdayDayMax, weekendDayMin, weekendDayMax, nenkyuCapDefault, nenkyuMinDefault, staffOverrides
+        dateOverridePattern, holidayOverride, dayCountOverride, ngConditions, weekdayDayMin, weekdayDayMax, weekendDayMin, weekendDayMax, nenkyuCapDefault, nenkyuMinDefault, kouQuotaOverride, staffOverrides
       }));
     }catch(e){}
   }, 300);
@@ -670,6 +686,18 @@ function renderDayMinInputs(){
   document.getElementById('weekendDayMaxInput').value = weekendDayMax != null ? weekendDayMax : '';
   document.getElementById('nenkyuCapInput').value = nenkyuCapDefault;
   document.getElementById('nenkyuMinInput').value = nenkyuMinDefault;
+  // 公休数設定
+  document.getElementById('kouQuotaOverrideInput').value = kouQuotaOverride !== null ? kouQuotaOverride : '';
+  // 自動計算値を参考表示
+  let autoKou=0, autoShuku=0;
+  const dim = daysInMonth();
+  for(let d=1;d<=dim;d++){
+    if(isHoliday(d)) autoShuku++;
+    else if(isWeekend(d)) autoKou++;
+  }
+  const total = (kouQuotaOverride !== null ? kouQuotaOverride : autoKou) + autoShuku;
+  document.getElementById('kouQuotaAutoNote').textContent =
+    `日（空欄=自動：${autoKou}日）　祝日：${autoShuku}日　合計保証休み：${total}日`;
 }
 function renderCalOverrideGrid(){
   const grid = document.getElementById('calOverrideGrid');
@@ -727,6 +755,8 @@ function saveAndRerenderSettings(){
   nenkyuMinDefault = parseInt(document.getElementById('nenkyuMinInput').value,10);
   if(isNaN(nenkyuMinDefault) || nenkyuMinDefault<0) nenkyuMinDefault = 1;
   nenkyuMinDefault = Math.min(nenkyuMinDefault, nenkyuCapDefault); // 最低保証は上限を超えない
+  const _kouOv = document.getElementById('kouQuotaOverrideInput').value;
+  kouQuotaOverride = _kouOv !== '' ? (parseInt(_kouOv,10) ?? null) : null;
   saveSettings();
   renderPeriodLabel();
   renderCalOverrideGrid();
